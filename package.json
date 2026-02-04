@@ -1,0 +1,44 @@
+{
+  "name": "secondhand-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for searching secondary marketplaces (Facebook Marketplace, eBay, Craigslist, etc.)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "secondhand-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "marketplace",
+    "facebook-marketplace",
+    "ebay",
+    "craigslist",
+    "secondhand",
+    "resale",
+    "claude",
+    "anthropic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/secondhand-mcp"
+  }
+}
