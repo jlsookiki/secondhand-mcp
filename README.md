@@ -21,15 +21,6 @@ An MCP server for searching secondary marketplaces. Lets Claude and other AI ass
 
 ## Setup
 
-### From Source
-
-```bash
-git clone https://github.com/jlsookiki/secondhand-mcp.git
-cd secondhand-mcp
-npm install
-npm run build
-```
-
 ### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -182,6 +173,8 @@ Use `get_listing_details` with a listing ID to see full photos, description, and
 ## Development
 
 ```bash
+git clone https://github.com/jlsookiki/secondhand-mcp.git
+cd secondhand-mcp
 npm install
 npm run build
 ```
