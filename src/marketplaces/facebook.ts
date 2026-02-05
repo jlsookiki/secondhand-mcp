@@ -9,12 +9,14 @@
  */
 
 import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult, Listing, LocationCoordinates } from '../types';
+import { SearchParams, SearchResult, Listing, ListingDetails, LocationCoordinates } from '../types';
 
 // GraphQL endpoint and operation identifiers
 const GRAPHQL_URL = 'https://www.facebook.com/api/graphql/';
 const LOCATION_DOC_ID = '5585904654783609';
 const SEARCH_DOC_ID = '7111939778879383';
+const DETAIL_PHOTOS_DOC_ID = '10059604367394414';
+const DETAIL_INFO_DOC_ID = '26090240497332612';
 
 const GRAPHQL_HEADERS: Record<string, string> = {
   'content-type': 'application/x-www-form-urlencoded',
@@ -105,6 +107,58 @@ export class FacebookMarketplace extends BaseMarketplace {
     } catch {
       return false;
     }
+  }
+
+  async getListingDetails(listingId: string): Promise<ListingDetails> {
+    // Fetch photos and detail info in parallel
+    const photosVars = JSON.stringify({ targetId: listingId });
+    const infoVars = JSON.stringify({
+      targetId: listingId,
+      scale: 2,
+      feedbackSource: 56,
+      feedLocation: 'MARKETPLACE_MEGAMALL',
+      referralCode: 'marketplace_top_picks',
+      enableJobEmployerActionBar: false,
+      enableJobSeekerActionBar: false,
+      useDefaultActor: false,
+      __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: false,
+      __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+      __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+      __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+      __relay_internal__pv__CometUFI_dedicated_comment_routable_dialog_gkrelayprovider: false,
+      __relay_internal__pv__GHLShouldChangeAdIdFieldNamerelayprovider: true,
+      __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+      __relay_internal__pv__IsWorkUserrelayprovider: false,
+      __relay_internal__pv__ShouldUpdateMarketplaceBoostListingBoostedStatusrelayprovider: false,
+    });
+
+    const [photosRes, infoRes] = await Promise.all([
+      this.fetchGraphQL(DETAIL_PHOTOS_DOC_ID, photosVars),
+      this.fetchGraphQL(DETAIL_INFO_DOC_ID, infoVars),
+    ]);
+
+    const photosTarget = photosRes?.data?.viewer?.marketplace_product_details_page?.target;
+    const infoTarget = infoRes?.data?.viewer?.marketplace_product_details_page?.target;
+
+    const images: string[] = [];
+    if (Array.isArray(photosTarget?.listing_photos)) {
+      for (const photo of photosTarget.listing_photos) {
+        const uri = photo?.image?.uri;
+        if (uri) images.push(uri);
+      }
+    }
+
+    return {
+      id: listingId,
+      description: infoTarget?.redacted_description?.text ?? undefined,
+      images,
+      location: infoTarget?.location_text?.text ?? undefined,
+      locationCoords: infoTarget?.location ?? undefined,
+      seller: infoTarget?.marketplace_listing_seller?.name ?? undefined,
+      deliveryTypes: infoTarget?.delivery_types ?? undefined,
+      isShippingOffered: infoTarget?.is_shipping_offered ?? undefined,
+      url: `https://www.facebook.com/marketplace/item/${listingId}`,
+    };
   }
 
   // ── Private helpers ──────────────────────────────────────────────

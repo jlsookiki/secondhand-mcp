@@ -37,6 +37,18 @@ export interface SearchResult {
   totalFound?: number;
 }
 
+export interface ListingDetails {
+  id: string;
+  description?: string;
+  images: string[];
+  location?: string;
+  locationCoords?: { latitude: number; longitude: number };
+  seller?: string;
+  deliveryTypes?: string[];
+  isShippingOffered?: boolean;
+  url: string;
+}
+
 export interface MarketplaceConfig {
   enabled: boolean;
   requiresAuth?: boolean;
