@@ -15,12 +15,13 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { SearchParams, SearchResult, Listing } from './types';
+import { SearchParams, SearchResult, Listing, ListingDetails } from './types';
 import {
   initializeMarketplaces,
   getMarketplace,
   getAllMarketplaces,
   listMarketplaceNames,
+  FacebookMarketplace,
 } from './marketplaces';
 
 // Initialize marketplaces
@@ -68,6 +69,20 @@ const tools: Tool[] = [
         }
       },
       required: ['query']
+    }
+  },
+  {
+    name: 'get_listing_details',
+    description: 'Get full details for a specific Facebook Marketplace listing including description, all photos, seller info, and shipping/delivery options. Use a listing ID from search results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listingId: {
+          type: 'string',
+          description: 'The Facebook Marketplace listing ID (from search results or a marketplace URL)'
+        }
+      },
+      required: ['listingId']
     }
   },
   {
@@ -189,6 +204,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
+    case 'get_listing_details': {
+      const { listingId } = args as { listingId: string };
+
+      if (!listingId) {
+        return {
+          content: [{ type: 'text', text: 'Missing required parameter: listingId' }],
+          isError: true,
+        };
+      }
+
+      try {
+        const fb = getMarketplace('facebook') as FacebookMarketplace;
+        const details = await fb.getListingDetails(listingId);
+        return {
+          content: [{ type: 'text', text: formatListingDetails(details) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text', text: `Error fetching listing details: ${error}` }],
+          isError: true,
+        };
+      }
+    }
+
     case 'list_marketplaces': {
       const marketplaces = getAllMarketplaces();
       const info = marketplaces.map(mp => ({
@@ -289,6 +328,45 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams): s
     }
     
     lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function formatListingDetails(details: ListingDetails): string {
+  const lines = [
+    `📋 Listing Details`,
+    `🔗 ${details.url}`,
+    '',
+  ];
+
+  if (details.description) {
+    lines.push(`**Description:** ${details.description}`);
+    lines.push('');
+  }
+
+  if (details.location) {
+    lines.push(`📍 ${details.location}`);
+  }
+
+  if (details.seller) {
+    lines.push(`👤 Seller: ${details.seller}`);
+  }
+
+  if (details.deliveryTypes && details.deliveryTypes.length > 0) {
+    lines.push(`🚚 Delivery: ${details.deliveryTypes.join(', ')}`);
+  }
+
+  if (details.isShippingOffered) {
+    lines.push(`📦 Shipping available`);
+  }
+
+  if (details.images.length > 0) {
+    lines.push('');
+    lines.push(`🖼️ Photos (${details.images.length}):`);
+    for (const img of details.images) {
+      lines.push(`   ${img}`);
+    }
   }
 
   return lines.join('\n');
