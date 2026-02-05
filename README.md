@@ -1,176 +1,174 @@
-# 🛒 Secondhand MCP
+# Secondhand MCP
 
-An MCP (Model Context Protocol) server for searching secondary marketplaces. Lets Claude and other AI assistants search for deals on Facebook Marketplace, eBay, Craigslist, and more.
+An MCP server for searching secondary marketplaces. Lets Claude and other AI assistants search for deals on Facebook Marketplace and eBay.
 
 ## Features
 
-- 🔍 **Search multiple marketplaces** from a single interface
-- 💰 **Price filtering** - set min/max price ranges
-- 📍 **Location-based search** - search by city
-- 🤖 **MCP-compatible** - works with Claude Desktop, Cursor, and other MCP clients
-- 🔓 **No login required** - works without authentication
-- ⚡ **Lightweight** - no browser dependencies, uses native HTTP requests
-- 🧩 **Extensible** - easy to add new marketplaces
+- Search multiple marketplaces from a single interface
+- Price filtering with min/max ranges
+- Location-based search by city
+- Detailed listing inspection (photos, descriptions, seller info)
+- Availability filtering — sold/pending items excluded by default
+- Works with Claude Desktop, Claude Code, Cursor, and other MCP clients
+- Lightweight — no browser dependencies, native HTTP requests
 
 ## Supported Marketplaces
 
-| Marketplace | Status | Notes |
-|-------------|--------|-------|
-| Facebook Marketplace | ✅ Working | No login required |
-| eBay | 🚧 Coming Soon | Contributions welcome! |
-| Craigslist | 📋 Planned | |
-| OfferUp | 📋 Planned | |
-| Mercari | 📋 Planned | |
+| Marketplace | Status | Auth Required |
+|-------------|--------|---------------|
+| Facebook Marketplace | Working | No |
+| eBay | Working | Yes (API keys) |
 
-## Installation
-
-### For Claude Desktop
-
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "secondhand": {
-      "command": "npx",
-      "args": ["-y", "secondhand-mcp"]
-    }
-  }
-}
-```
+## Setup
 
 ### From Source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/secondhand-mcp.git
+git clone https://github.com/jlsookiki/secondhand-mcp.git
 cd secondhand-mcp
 npm install
 npm run build
 ```
 
-Then add to your MCP config:
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "secondhand": {
       "command": "node",
-      "args": ["/path/to/secondhand-mcp/dist/index.js"]
+      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "env": {
+        "EBAY_CLIENT_ID": "your-ebay-client-id",
+        "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
+      }
     }
   }
 }
 ```
 
-## Usage
+### Claude Code
 
-Once installed, you can ask Claude things like:
+Add to `~/.claude/.mcp.json`:
 
-- "Search Facebook Marketplace for strollers in San Francisco under $100"
-- "Find me a used iPhone 14 in NYC"
-- "Look for vintage furniture in Los Angeles"
-- "Search all marketplaces for a road bike in Seattle"
-
-### Available Tools
-
-#### `search_marketplace`
-
-Search for items on secondary marketplaces.
-
-**Parameters:**
-- `query` (required): Search terms (e.g., "stroller", "iPhone 14")
-- `marketplace`: Which marketplace to search (`facebook`, `ebay`, or `all`)
-- `location`: City to search in (e.g., "san francisco", "nyc")
-- `maxPrice`: Maximum price filter
-- `minPrice`: Minimum price filter  
-- `limit`: Max results to return (default: 20)
-
-#### `list_marketplaces`
-
-List all available marketplaces and their status.
-
-## Example Output
-
-```
-🔍 Found 15 listings for "stroller" on facebook
-📍 Location: san francisco
-
-**$25** - Baby stroller
-   📍 San Francisco, CA
-   🔗 https://www.facebook.com/marketplace/item/123456789
-
-**$50** - Thule Urban Glide Jogging Stroller
-   📍 San Francisco, CA
-   🔗 https://www.facebook.com/marketplace/item/987654321
-
-...
-```
-
-## Adding New Marketplaces
-
-1. Create a new file in `src/marketplaces/` (e.g., `craigslist.ts`)
-2. Extend `BaseMarketplace` and implement the `search` method
-3. Register it in `src/marketplaces/index.ts`
-
-```typescript
-import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult } from '../types';
-
-export class CraigslistMarketplace extends BaseMarketplace {
-  readonly name = 'craigslist';
-  readonly displayName = 'Craigslist';
-  readonly requiresAuth = false;
-  
-  async search(params: SearchParams): Promise<SearchResult> {
-    // Your implementation here
+```json
+{
+  "mcpServers": {
+    "secondhand": {
+      "command": "node",
+      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "env": {
+        "EBAY_CLIENT_ID": "your-ebay-client-id",
+        "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
+      }
+    }
   }
 }
 ```
 
-## Development
+eBay credentials are optional — if omitted, eBay will be disabled and only Facebook Marketplace will be available.
 
-```bash
-# Install dependencies
-npm install
+## Configuration
 
-# Build
-npm run build
+### Choosing Marketplaces
 
-# Run in development
-npm run dev
+By default all marketplaces are enabled. To limit which marketplaces are active, set the `MARKETPLACES` env var (comma-separated):
+
+```json
+{
+  "env": {
+    "MARKETPLACES": "facebook",
+    "EBAY_CLIENT_ID": "...",
+    "EBAY_CLIENT_SECRET": "..."
+  }
+}
 ```
+
+Valid values: `facebook`, `ebay`
+
+### eBay API Keys
+
+eBay uses the official [Browse API](https://developer.ebay.com/api-docs/buy/browse/overview.html). You need a free eBay developer account:
+
+1. Create an account at [developer.ebay.com](https://developer.ebay.com)
+2. Create an application to get a Client ID and Client Secret
+3. Add them to your MCP config as `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET`
+
+## Tools
+
+### `search_marketplace`
+
+Search for items across marketplaces.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `query` | Yes | | Search terms |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, or `all` |
+| `location` | No | `san francisco` | City to search in |
+| `maxPrice` | No | | Maximum price |
+| `minPrice` | No | | Minimum price |
+| `limit` | No | `20` | Max results |
+| `showSold` | No | `false` | Include sold/unavailable items |
+| `includeImages` | No | `false` | Include image URLs in output |
+
+### `get_listing_details`
+
+Get full details for a specific listing — description, all photos, seller info, shipping options.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `listingId` | Yes | | Listing ID from search results |
+| `marketplace` | No | `facebook` | `facebook` or `ebay` |
+
+### `list_marketplaces`
+
+List all enabled marketplaces and their status.
+
+## Example Output
+
+```
+Found 15 listings for "stroller" on facebook
+Location: san francisco
+
+**$25** - Baby stroller
+   San Francisco, CA
+   ID: 123456789
+   1 photo
+
+**$50** - Thule Urban Glide Jogging Stroller
+   San Francisco, CA
+   ID: 987654321
+   1 photo
+```
+
+Use `get_listing_details` with a listing ID to see full photos, description, and seller info.
 
 ## How It Works
 
-The server uses Facebook's internal GraphQL API to search Marketplace listings directly — no browser automation, no Playwright, no headless Chrome.
+**Facebook Marketplace** — Uses Facebook's internal GraphQL API to search listings directly. No login, no browser automation. Resolves city names to coordinates, then searches with location/price/query filters. Uses undocumented `doc_id` endpoints that may need updating if Facebook changes their frontend.
 
-For Facebook Marketplace:
+**eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed.
 
-1. Resolves your location string (e.g., "san francisco") to coordinates via GraphQL
-2. Searches listings using those coordinates, your query, and any price filters
-3. Parses the structured JSON response into listings
-4. Caches location lookups so repeated searches for the same city are instant
+## Adding New Marketplaces
 
-This approach:
-- ✅ Works without API keys or login
-- ✅ Gets real-time data
-- ✅ Fast — plain HTTP requests, no browser overhead
-- ✅ Lightweight — zero heavy dependencies
-- ⚠️ Uses undocumented Facebook GraphQL endpoints (`doc_id` values may need updating if Facebook changes their frontend)
+1. Create a new file in `src/marketplaces/` (e.g., `craigslist.ts`)
+2. Extend `BaseMarketplace` and implement `search()` and optionally `getListingDetails()`
+3. Add the constructor to the `allMarketplaces` registry in `src/marketplaces/index.ts`
+
+## Development
+
+```bash
+npm install
+npm run build
+```
 
 ## Limitations
 
-- **Facebook Marketplace**: Uses undocumented API — may break if Facebook changes GraphQL `doc_id` values
+- **Facebook Marketplace**: Uses undocumented GraphQL API — may break if Facebook changes `doc_id` values (constants in `src/marketplaces/facebook.ts`)
 - **Rate limiting**: Don't make too many requests too quickly
-- **Maintenance**: If searches stop working, the `doc_id` constants in `src/marketplaces/facebook.ts` may need updating
-
-## Contributing
-
-Contributions welcome! Especially:
-
-- New marketplace integrations
-- Better error handling
-- Performance improvements
-- Documentation
+- **eBay**: Requires developer API keys (free tier available)
 
 ## License
 
@@ -178,4 +176,4 @@ MIT
 
 ## Disclaimer
 
-This tool is for personal use. Respect each marketplace's Terms of Service. The authors are not responsible for any misuse or account restrictions.
+This tool is for personal use. Respect each marketplace's Terms of Service.
