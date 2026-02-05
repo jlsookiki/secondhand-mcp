@@ -32,7 +32,7 @@ initializeMarketplaces();
 const tools: Tool[] = [
   {
     name: 'search_marketplace',
-    description: `Search for items on secondary marketplaces. Supports: ${listMarketplaceNames().join(', ')}. Returns listings with prices, titles, locations, and URLs.`,
+    description: `Search for items on secondary marketplaces. Supports: ${listMarketplaceNames().join(', ')}. Returns listing ID, title, price, location, and photo count. Facebook: location-based search, no auth. eBay: keyword search with condition filter, requires API keys. Use get_listing_details with a listing ID for full description, all photos, seller info, and shipping options.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -79,7 +79,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_listing_details',
-    description: 'Get full details for a specific marketplace listing including description, all photos, seller info, and shipping/delivery options. Use a listing ID from search results.',
+    description: 'Get full details for a specific listing using an ID from search results. Facebook returns: description, all photos, location, seller name, delivery types, shipping availability. eBay returns: description, all photos, location (city/state/country), seller username, shipping service options.',
     inputSchema: {
       type: 'object',
       properties: {

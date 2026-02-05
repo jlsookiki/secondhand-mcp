@@ -38,8 +38,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "secondhand": {
-      "command": "node",
-      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
         "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
@@ -57,8 +57,8 @@ Add to `~/.claude/.mcp.json`:
 {
   "mcpServers": {
     "secondhand": {
-      "command": "node",
-      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
         "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
@@ -100,27 +100,49 @@ eBay uses the official [Browse API](https://developer.ebay.com/api-docs/buy/brow
 
 ### `search_marketplace`
 
-Search for items across marketplaces.
+Search for items across marketplaces. Returns a summary per listing: **title, price, location, listing ID, and photo count**.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
 | `marketplace` | No | `facebook` | `facebook`, `ebay`, or `all` |
-| `location` | No | `san francisco` | City to search in |
+| `location` | No | `san francisco` | City to search in (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
 | `limit` | No | `20` | Max results |
-| `showSold` | No | `false` | Include sold/unavailable items |
+| `showSold` | No | `false` | Include sold/unavailable items (Facebook only) |
 | `includeImages` | No | `false` | Include image URLs in output |
+
+**Data returned per marketplace:**
+
+| Field | Facebook | eBay |
+|-------|----------|------|
+| Title | Yes | Yes |
+| Price | Yes | Yes |
+| Location | City name | City, State |
+| Condition | No | Yes |
+| Photo count | Yes (1 thumbnail) | Yes (1 thumbnail) |
+| Seller | Yes | Yes |
 
 ### `get_listing_details`
 
-Get full details for a specific listing — description, all photos, seller info, shipping options.
+Get full details for a specific listing using an ID from search results.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
 | `marketplace` | No | `facebook` | `facebook` or `ebay` |
+
+**Data returned per marketplace:**
+
+| Field | Facebook | eBay |
+|-------|----------|------|
+| Description | Yes | Yes |
+| All photos | Yes | Yes |
+| Location | City | City, State, Country |
+| Seller | Name | Username |
+| Delivery types | Yes | No |
+| Shipping options | Yes/No flag | Service codes |
 
 ### `list_marketplaces`
 
