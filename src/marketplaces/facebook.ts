@@ -169,12 +169,9 @@ export class FacebookMarketplace extends BaseMarketplace {
         // Filter out sold/unavailable listings unless showSold is true
         if (!showSold) {
           if (listing.is_sold === true) continue;
-          if (listing.is_live_in_marketplace === false) continue;
-
-          const availability = listing.availability;
-          if (availability && availability !== 'AVAILABLE' && availability !== 'IN_STOCK') {
-            continue;
-          }
+          if (listing.is_live === false) continue;
+          if (listing.is_pending === true) continue;
+          if (listing.is_hidden === true) continue;
 
           // Heuristic: sellers sometimes mark sold items in the title
           const title = (listing.marketplace_listing_title || '').toUpperCase();
@@ -186,36 +183,17 @@ export class FacebookMarketplace extends BaseMarketplace {
         const price = listing.listing_price?.formatted_amount || 'Price not listed';
         const parsed = this.parsePrice(price);
 
-        // Collect all images: try listing_photos array first, fall back to primary photo
-        const images: string[] = [];
-        const photos = listing.listing_photos ?? listing.all_listing_photos;
-        if (Array.isArray(photos)) {
-          for (const photo of photos) {
-            const uri = photo?.image?.uri;
-            if (uri) images.push(uri);
-          }
-        }
-        if (images.length === 0) {
-          const primaryUri = listing.primary_listing_photo?.image?.uri;
-          if (primaryUri) images.push(primaryUri);
-        }
-
-        // Extract description
-        const description =
-          listing.redacted_description?.text ??
-          listing.marketplace_listing_description ??
-          undefined;
+        const imageUri = listing.primary_listing_photo?.image?.uri;
 
         listings.push({
           id: listing.id,
           title: listing.marketplace_listing_title || 'Untitled Listing',
-          description,
           price,
           priceNumeric: parsed?.numeric,
           currency: parsed?.currency || '$',
           location: listing.location?.reverse_geocode?.city_page?.display_name,
           url: `https://www.facebook.com/marketplace/item/${listing.id}`,
-          images: images.length > 0 ? images : undefined,
+          images: imageUri ? [imageUri] : undefined,
           seller: listing.marketplace_listing_seller?.name,
           marketplace: this.name,
           scrapedAt: new Date().toISOString(),
