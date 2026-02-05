@@ -38,8 +38,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "secondhand": {
-      "command": "node",
-      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
         "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
@@ -57,8 +57,8 @@ Add to `~/.claude/.mcp.json`:
 {
   "mcpServers": {
     "secondhand": {
-      "command": "node",
-      "args": ["/path/to/secondhand-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
         "EBAY_CLIENT_SECRET": "your-ebay-client-secret"

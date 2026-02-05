@@ -7,6 +7,10 @@
   "bin": {
     "secondhand-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -24,7 +28,7 @@
     "claude",
     "anthropic"
   ],
-  "author": "",
+  "author": "Justin Sookikian",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "~1.5.0"
@@ -39,6 +43,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/secondhand-mcp"
+    "url": "git+https://github.com/jlsookiki/secondhand-mcp.git"
   }
 }
