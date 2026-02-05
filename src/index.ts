@@ -66,6 +66,11 @@ const tools: Tool[] = [
           type: 'boolean',
           description: 'Include sold/unavailable items in results (default: false)',
           default: false
+        },
+        includeImages: {
+          type: 'boolean',
+          description: 'Include full image URLs in results (default: false). Use get_listing_details for full photos.',
+          default: false
         }
       },
       required: ['query']
@@ -127,6 +132,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         minPrice?: number;
         limit?: number;
         showSold?: boolean;
+        includeImages?: boolean;
       };
 
       const searchParams: SearchParams = {
@@ -161,7 +167,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: formatMultipleResults(results, searchParams)
+              text: formatMultipleResults(results, searchParams, params.includeImages || false)
             }
           ]
         };
@@ -186,7 +192,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: 'text',
-                text: formatSingleResult(result, searchParams)
+                text: formatSingleResult(result, searchParams, params.includeImages || false)
               }
             ]
           };
@@ -257,7 +263,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Format results for display
-function formatSingleResult(result: SearchResult, params: SearchParams): string {
+function formatSingleResult(result: SearchResult, params: SearchParams, includeImages: boolean): string {
   if (!result.success) {
     return `❌ ${result.marketplace}: ${result.error}`;
   }
@@ -287,7 +293,11 @@ function formatSingleResult(result: SearchResult, params: SearchParams): string 
     }
     lines.push(`   🔗 ${listing.url}`);
     if (listing.images && listing.images.length > 0) {
-      lines.push(`   🖼️ Images: ${listing.images.join(' , ')}`);
+      if (includeImages) {
+        lines.push(`   🖼️ Images: ${listing.images.join(' , ')}`);
+      } else {
+        lines.push(`   📷 ${listing.images.length} photo${listing.images.length > 1 ? 's' : ''}`);
+      }
     }
     lines.push('');
   }
@@ -295,7 +305,7 @@ function formatSingleResult(result: SearchResult, params: SearchParams): string 
   return lines.join('\n');
 }
 
-function formatMultipleResults(results: SearchResult[], params: SearchParams): string {
+function formatMultipleResults(results: SearchResult[], params: SearchParams, includeImages: boolean): string {
   const lines = [
     `🔍 Search results for "${params.query}" across all marketplaces`,
     `📍 Location: ${params.location}`,
@@ -322,7 +332,11 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams): s
           lines.push(`    ${listing.description}`);
         }
         if (listing.images && listing.images.length > 0) {
-          lines.push(`    🖼️ Images: ${listing.images.join(' , ')}`);
+          if (includeImages) {
+            lines.push(`    🖼️ Images: ${listing.images.join(' , ')}`);
+          } else {
+            lines.push(`    📷 ${listing.images.length} photo${listing.images.length > 1 ? 's' : ''}`);
+          }
         }
       }
     }
