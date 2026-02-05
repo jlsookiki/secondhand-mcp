@@ -60,6 +60,11 @@ const tools: Tool[] = [
           type: 'number',
           description: 'Maximum number of results to return (default: 20)',
           default: 20
+        },
+        showSold: {
+          type: 'boolean',
+          description: 'Include sold/unavailable items in results (default: false)',
+          default: false
         }
       },
       required: ['query']
@@ -106,6 +111,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         maxPrice?: number;
         minPrice?: number;
         limit?: number;
+        showSold?: boolean;
       };
 
       const searchParams: SearchParams = {
@@ -114,6 +120,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         maxPrice: params.maxPrice,
         minPrice: params.minPrice,
         limit: params.limit || 20,
+        showSold: params.showSold || false,
       };
 
       const marketplaceName = params.marketplace || 'facebook';
@@ -233,10 +240,16 @@ function formatSingleResult(result: SearchResult, params: SearchParams): string 
 
   for (const listing of sorted) {
     lines.push(`**${listing.price}** - ${listing.title}`);
+    if (listing.description) {
+      lines.push(`   ${listing.description}`);
+    }
     if (listing.location) {
       lines.push(`   📍 ${listing.location}`);
     }
     lines.push(`   🔗 ${listing.url}`);
+    if (listing.images && listing.images.length > 0) {
+      lines.push(`   🖼️ Images: ${listing.images.join(' , ')}`);
+    }
     lines.push('');
   }
 
@@ -266,6 +279,12 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams): s
 
       for (const listing of sorted) {
         lines.push(`  • **${listing.price}** - ${listing.title}`);
+        if (listing.description) {
+          lines.push(`    ${listing.description}`);
+        }
+        if (listing.images && listing.images.length > 0) {
+          lines.push(`    🖼️ Images: ${listing.images.join(' , ')}`);
+        }
       }
     }
     

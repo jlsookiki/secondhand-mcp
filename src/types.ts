@@ -9,8 +9,9 @@ export interface Listing {
   priceNumeric?: number;
   currency?: string;
   location?: string;
+  description?: string;
   url: string;
-  imageUrl?: string;
+  images?: string[];
   seller?: string;
   condition?: string;
   marketplace: string;
@@ -25,6 +26,7 @@ export interface SearchParams {
   radius?: number; // in miles
   condition?: 'new' | 'like_new' | 'good' | 'fair' | 'any';
   limit?: number;
+  showSold?: boolean;
 }
 
 export interface SearchResult {
