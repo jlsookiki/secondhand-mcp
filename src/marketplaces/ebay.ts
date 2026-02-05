@@ -168,13 +168,9 @@ export class EbayMarketplace extends BaseMarketplace {
           : 'Price not listed';
         const parsed = this.parsePrice(priceStr);
 
+        // Only grab primary image for search results; full set via getListingDetails
         const images: string[] = [];
         if (item.image?.imageUrl) images.push(item.image.imageUrl);
-        if (Array.isArray(item.additionalImages)) {
-          for (const img of item.additionalImages) {
-            if (img.imageUrl) images.push(img.imageUrl);
-          }
-        }
 
         const location = item.itemLocation;
         const locationText = [location?.city, location?.stateOrProvince]

@@ -303,13 +303,10 @@ function formatSingleResult(result: SearchResult, params: SearchParams, includeI
 
   for (const listing of sorted) {
     lines.push(`**${listing.price}** - ${listing.title}`);
-    if (listing.description) {
-      lines.push(`   ${listing.description}`);
-    }
     if (listing.location) {
       lines.push(`   📍 ${listing.location}`);
     }
-    lines.push(`   🔗 ${listing.url}`);
+    lines.push(`   🆔 ${listing.id}`);
     if (listing.images && listing.images.length > 0) {
       if (includeImages) {
         lines.push(`   🖼️ Images: ${listing.images.join(' , ')}`);
@@ -346,9 +343,6 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams, in
 
       for (const listing of sorted) {
         lines.push(`  • **${listing.price}** - ${listing.title}`);
-        if (listing.description) {
-          lines.push(`    ${listing.description}`);
-        }
         if (listing.images && listing.images.length > 0) {
           if (includeImages) {
             lines.push(`    🖼️ Images: ${listing.images.join(' , ')}`);
@@ -356,6 +350,7 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams, in
             lines.push(`    📷 ${listing.images.length} photo${listing.images.length > 1 ? 's' : ''}`);
           }
         }
+        lines.push(`    🆔 ${listing.id}`);
       }
     }
     
