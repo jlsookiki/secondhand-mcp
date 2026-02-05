@@ -22,6 +22,7 @@ import {
   getAllMarketplaces,
   listMarketplaceNames,
   FacebookMarketplace,
+  EbayMarketplace,
 } from './marketplaces';
 
 // Initialize marketplaces
@@ -78,13 +79,18 @@ const tools: Tool[] = [
   },
   {
     name: 'get_listing_details',
-    description: 'Get full details for a specific Facebook Marketplace listing including description, all photos, seller info, and shipping/delivery options. Use a listing ID from search results.',
+    description: 'Get full details for a specific marketplace listing including description, all photos, seller info, and shipping/delivery options. Use a listing ID from search results.',
     inputSchema: {
       type: 'object',
       properties: {
         listingId: {
           type: 'string',
-          description: 'The Facebook Marketplace listing ID (from search results or a marketplace URL)'
+          description: 'The listing ID (from search results or a marketplace URL)'
+        },
+        marketplace: {
+          type: 'string',
+          description: 'Which marketplace the listing is from (default: facebook)',
+          default: 'facebook'
         }
       },
       required: ['listingId']
@@ -211,7 +217,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'get_listing_details': {
-      const { listingId } = args as { listingId: string };
+      const { listingId, marketplace: mpName } = args as {
+        listingId: string;
+        marketplace?: string;
+      };
 
       if (!listingId) {
         return {
@@ -221,8 +230,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
-        const fb = getMarketplace('facebook') as FacebookMarketplace;
-        const details = await fb.getListingDetails(listingId);
+        const targetMp = mpName || 'facebook';
+        let details: ListingDetails;
+
+        if (targetMp === 'ebay') {
+          const ebay = getMarketplace('ebay') as EbayMarketplace;
+          details = await ebay.getListingDetails(listingId);
+        } else {
+          const fb = getMarketplace('facebook') as FacebookMarketplace;
+          details = await fb.getListingDetails(listingId);
+        }
+
         return {
           content: [{ type: 'text', text: formatListingDetails(details) }],
         };
@@ -285,13 +303,10 @@ function formatSingleResult(result: SearchResult, params: SearchParams, includeI
 
   for (const listing of sorted) {
     lines.push(`**${listing.price}** - ${listing.title}`);
-    if (listing.description) {
-      lines.push(`   ${listing.description}`);
-    }
     if (listing.location) {
       lines.push(`   📍 ${listing.location}`);
     }
-    lines.push(`   🔗 ${listing.url}`);
+    lines.push(`   🆔 ${listing.id}`);
     if (listing.images && listing.images.length > 0) {
       if (includeImages) {
         lines.push(`   🖼️ Images: ${listing.images.join(' , ')}`);
@@ -328,9 +343,6 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams, in
 
       for (const listing of sorted) {
         lines.push(`  • **${listing.price}** - ${listing.title}`);
-        if (listing.description) {
-          lines.push(`    ${listing.description}`);
-        }
         if (listing.images && listing.images.length > 0) {
           if (includeImages) {
             lines.push(`    🖼️ Images: ${listing.images.join(' , ')}`);
@@ -338,6 +350,7 @@ function formatMultipleResults(results: SearchResult[], params: SearchParams, in
             lines.push(`    📷 ${listing.images.length} photo${listing.images.length > 1 ? 's' : ''}`);
           }
         }
+        lines.push(`    🆔 ${listing.id}`);
       }
     }
     
