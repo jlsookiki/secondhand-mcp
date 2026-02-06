@@ -145,11 +145,11 @@ List all enabled marketplaces and their status.
 
 ## How It Works
 
-**Facebook Marketplace** — Uses Facebook's internal GraphQL API. Resolves city names to coordinates, then searches with location/price/query filters. No login or browser needed.
+**Facebook Marketplace** — Resolves city names to coordinates, then searches with location/price/query filters. No login or browser needed.
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed.
 
-**Depop** — Uses a headless browser (puppeteer-core + stealth plugin) to bypass Cloudflare TLS fingerprinting, then calls Depop's internal web API from within the browser context. Returns clean JSON — no DOM scraping. The browser instance is shared across requests.
+**Depop** — Uses a headless browser (puppeteer-core + stealth plugin). The browser instance is shared across requests.
 
 ## Development
 
