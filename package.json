@@ -1,7 +1,7 @@
 {
   "name": "secondhand-mcp",
   "version": "0.1.0",
-  "description": "MCP server for searching secondary marketplaces (Facebook Marketplace, eBay, Craigslist, etc.)",
+  "description": "MCP server for searching secondhand marketplaces — Facebook Marketplace, eBay, and Depop. Search listings, filter by price/category/condition, and get full details with photos.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -19,24 +19,31 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "marketplace",
     "facebook-marketplace",
     "ebay",
-    "craigslist",
+    "depop",
     "secondhand",
+    "thrift",
     "resale",
     "claude",
-    "anthropic"
+    "claude-desktop",
+    "ai-tools"
   ],
   "author": "Justin Sookikian",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "~1.5.0"
+    "@modelcontextprotocol/sdk": "~1.5.0",
+    "puppeteer-core": "^24.37.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.0",
-    "ts-node": "^10.9.0"
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=18.0.0"

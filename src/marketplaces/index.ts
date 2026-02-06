@@ -5,10 +5,13 @@
 import { Marketplace } from './base';
 import { FacebookMarketplace } from './facebook';
 import { EbayMarketplace } from './ebay';
+import { DepopMarketplace } from './depop';
+import { findChrome } from '../browser';
 
 export { Marketplace, BaseMarketplace } from './base';
 export { FacebookMarketplace } from './facebook';
 export { EbayMarketplace } from './ebay';
+export { DepopMarketplace } from './depop';
 
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();
@@ -17,6 +20,7 @@ const marketplaces: Map<string, Marketplace> = new Map();
 const allMarketplaces: Record<string, () => Marketplace> = {
   facebook: () => new FacebookMarketplace(),
   ebay: () => new EbayMarketplace(),
+  depop: () => new DepopMarketplace(),
 };
 
 // Register marketplaces based on MARKETPLACES env var (comma-separated).
@@ -33,6 +37,10 @@ export function initializeMarketplaces(): void {
     }
     if (name === 'ebay' && (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET)) {
       console.error('eBay marketplace enabled but EBAY_CLIENT_ID/EBAY_CLIENT_SECRET not set — skipping');
+      continue;
+    }
+    if (name === 'depop' && !findChrome()) {
+      console.error('Depop marketplace enabled but Chrome/Chromium not found — skipping');
       continue;
     }
     registerMarketplace(factory());

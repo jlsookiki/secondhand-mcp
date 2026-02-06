@@ -1,23 +1,16 @@
 # Secondhand MCP
 
-An MCP server for searching secondary marketplaces. Lets Claude and other AI assistants search for deals on Facebook Marketplace and eBay.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, and Depop for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
 
-## Features
-
-- Search multiple marketplaces from a single interface
-- Price filtering with min/max ranges
-- Location-based search by city
-- Detailed listing inspection (photos, descriptions, seller info)
-- Availability filtering — sold/pending items excluded by default
-- Works with Claude Desktop, Claude Code, Cursor, and other MCP clients
-- Lightweight — no browser dependencies, native HTTP requests
+Works with Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
 
 ## Supported Marketplaces
 
-| Marketplace | Status | Auth Required |
-|-------------|--------|---------------|
-| Facebook Marketplace | Working | No |
-| eBay | Working | Yes (API keys) |
+| Marketplace | Auth Required | Notes |
+|-------------|---------------|-------|
+| Facebook Marketplace | No | Location-based search |
+| eBay | Yes (API keys) | Official Browse API |
+| Depop | No | Requires Chrome installed |
 
 ## Setup
 
@@ -59,25 +52,31 @@ Add to `~/.claude/.mcp.json`:
 }
 ```
 
-eBay credentials are optional — if omitted, eBay will be disabled and only Facebook Marketplace will be available.
+eBay and Depop are both optional — if eBay API keys are missing or Chrome isn't installed, those marketplaces are automatically disabled and the rest still work.
+
+### Depop / Chrome Requirement
+
+Depop uses a headless browser to bypass Cloudflare. If **Google Chrome or Chromium** is installed on your system, Depop is automatically enabled — no config needed. If Chrome isn't found, Depop is silently skipped.
+
+On macOS, the first time you search Depop, you may see a system prompt asking to allow Node.js to control Chrome. This is expected — puppeteer needs to launch Chrome in headless mode. Allow it once and it won't ask again.
+
+The browser runs invisibly in the background and only launches when you actually search Depop.
 
 ## Configuration
 
 ### Choosing Marketplaces
 
-By default all marketplaces are enabled. To limit which marketplaces are active, set the `MARKETPLACES` env var (comma-separated):
+By default all marketplaces are enabled. To limit which are active, set the `MARKETPLACES` env var (comma-separated):
 
 ```json
 {
   "env": {
-    "MARKETPLACES": "facebook",
-    "EBAY_CLIENT_ID": "...",
-    "EBAY_CLIENT_SECRET": "..."
+    "MARKETPLACES": "facebook,ebay"
   }
 }
 ```
 
-Valid values: `facebook`, `ebay`
+Valid values: `facebook`, `ebay`, `depop`
 
 ### eBay API Keys
 
@@ -91,29 +90,34 @@ eBay uses the official [Browse API](https://developer.ebay.com/api-docs/buy/brow
 
 ### `search_marketplace`
 
-Search for items across marketplaces. Returns a summary per listing: **title, price, location, listing ID, and photo count**.
+Search for items across marketplaces.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, or `all` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
 | `limit` | No | `20` | Max results |
-| `showSold` | No | `false` | Include sold/unavailable items (Facebook only) |
+| `showSold` | No | `false` | Include sold items (Facebook only) |
 | `includeImages` | No | `false` | Include image URLs in output |
+| `sort` | No | `relevance` | Sort order (Depop only): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used` |
+| `category` | No | | Product category (Depop only): `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear` |
+| `sizes` | No | | Size filter (Depop only): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
+| `colors` | No | | Color filter (Depop only): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay |
-|-------|----------|------|
-| Title | Yes | Yes |
-| Price | Yes | Yes |
-| Location | City name | City, State |
-| Condition | No | Yes |
-| Photo count | Yes (1 thumbnail) | Yes (1 thumbnail) |
-| Seller | Yes | Yes |
+| Field | Facebook | eBay | Depop |
+|-------|----------|------|-------|
+| Title | Yes | Yes | Yes |
+| Price | Yes | Yes | Yes |
+| Location | City | City, State | — |
+| Condition | — | Yes | — |
+| Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail |
+| Seller | Yes | Yes | — |
 
 ### `get_listing_details`
 
@@ -122,53 +126,30 @@ Get full details for a specific listing using an ID from search results.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook` or `ebay` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, or `depop` |
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay |
-|-------|----------|------|
-| Description | Yes | Yes |
-| All photos | Yes | Yes |
-| Location | City | City, State, Country |
-| Seller | Name | Username |
-| Delivery types | Yes | No |
-| Shipping options | Yes/No flag | Service codes |
+| Field | Facebook | eBay | Depop |
+|-------|----------|------|-------|
+| Description | Yes | Yes | Yes |
+| All photos | Yes | Yes | Yes |
+| Location | City | City, State, Country | — |
+| Seller | Name | Username | Username |
+| Delivery types | Yes | — | — |
+| Shipping | Yes/No | Service codes | Yes/No |
 
 ### `list_marketplaces`
 
 List all enabled marketplaces and their status.
 
-## Example Output
-
-```
-Found 15 listings for "stroller" on facebook
-Location: san francisco
-
-**$25** - Baby stroller
-   San Francisco, CA
-   ID: 123456789
-   1 photo
-
-**$50** - Thule Urban Glide Jogging Stroller
-   San Francisco, CA
-   ID: 987654321
-   1 photo
-```
-
-Use `get_listing_details` with a listing ID to see full photos, description, and seller info.
-
 ## How It Works
 
-**Facebook Marketplace** — Uses Facebook's internal GraphQL API to search listings directly. No login, no browser automation. Resolves city names to coordinates, then searches with location/price/query filters. Uses undocumented `doc_id` endpoints that may need updating if Facebook changes their frontend.
+**Facebook Marketplace** — Uses Facebook's internal GraphQL API. Resolves city names to coordinates, then searches with location/price/query filters. No login or browser needed.
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed.
 
-## Adding New Marketplaces
-
-1. Create a new file in `src/marketplaces/` (e.g., `craigslist.ts`)
-2. Extend `BaseMarketplace` and implement `search()` and optionally `getListingDetails()`
-3. Add the constructor to the `allMarketplaces` registry in `src/marketplaces/index.ts`
+**Depop** — Uses a headless browser (puppeteer-core + stealth plugin) to bypass Cloudflare TLS fingerprinting, then calls Depop's internal web API from within the browser context. Returns clean JSON — no DOM scraping. The browser instance is shared across requests.
 
 ## Development
 
@@ -179,16 +160,19 @@ npm install
 npm run build
 ```
 
+### Adding a Marketplace
+
+1. Create a new file in `src/marketplaces/`
+2. Extend `BaseMarketplace` and implement `search()` and optionally `getListingDetails()`
+3. Add the constructor to `allMarketplaces` in `src/marketplaces/index.ts`
+
 ## Limitations
 
-- **Facebook Marketplace**: Uses undocumented GraphQL API — may break if Facebook changes `doc_id` values (constants in `src/marketplaces/facebook.ts`)
-- **Rate limiting**: Don't make too many requests too quickly
+- **Facebook**: Uses undocumented GraphQL API — may break if Facebook changes `doc_id` values
 - **eBay**: Requires developer API keys (free tier available)
+- **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search) due to headless browser startup
+- **Rate limiting**: Don't make too many requests too quickly
 
 ## License
 
 MIT
-
-## Disclaimer
-
-This tool is for personal use. Respect each marketplace's Terms of Service.
