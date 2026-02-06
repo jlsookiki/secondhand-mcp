@@ -24,9 +24,13 @@ export interface SearchParams {
   maxPrice?: number;
   minPrice?: number;
   radius?: number; // in miles
-  condition?: 'new' | 'like_new' | 'good' | 'fair' | 'any';
+  condition?: 'new' | 'like_new' | 'excellent' | 'good' | 'fair' | 'used' | 'any';
   limit?: number;
   showSold?: boolean;
+  sort?: 'relevance' | 'newest' | 'price_low_to_high' | 'price_high_to_low' | 'most_popular';
+  category?: string;
+  sizes?: string[];
+  colors?: string[];
 }
 
 export interface SearchResult {
