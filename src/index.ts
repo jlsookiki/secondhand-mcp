@@ -24,6 +24,7 @@ import {
   FacebookMarketplace,
   EbayMarketplace,
   DepopMarketplace,
+  PoshmarkMarketplace,
 } from './marketplaces';
 
 // Initialize marketplaces
@@ -33,7 +34,7 @@ initializeMarketplaces();
 const tools: Tool[] = [
   {
     name: 'search_marketplace',
-    description: `Search for items on secondary marketplaces. Supports: ${listMarketplaceNames().join(', ')}. Returns listing ID, title, price, location, and photo count. Facebook: location-based search, no auth. eBay: keyword search with condition filter, requires API keys. Depop: keyword search with filters for sort, condition, category, brands, sizes, colors (requires Chrome). Use get_listing_details with a listing ID for full description, all photos, seller info, and shipping options.`,
+    description: `Search for items on secondary marketplaces. Supports: ${listMarketplaceNames().join(', ')}. Returns listing ID, title, price, location, and photo count. Facebook: location-based search, no auth. eBay: keyword search with condition filter, requires API keys. Depop: keyword search with filters for sort, condition, category, brands, sizes, colors (requires Chrome). Poshmark: keyword search with filters for sort, condition, sizes, colors (requires Chrome). Use get_listing_details with a listing ID for full description, all photos, seller info, and shipping options.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -76,12 +77,12 @@ const tools: Tool[] = [
         },
         sort: {
           type: 'string',
-          description: 'Sort order (Depop only). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
+          description: 'Sort order (Depop, Poshmark). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
           default: 'relevance'
         },
         condition: {
           type: 'string',
-          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Use "any" for no filter.',
+          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Use "any" for no filter.',
         },
         category: {
           type: 'string',
@@ -90,12 +91,12 @@ const tools: Tool[] = [
         sizes: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter by sizes (Depop only). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
+          description: 'Filter by sizes (Depop, Poshmark). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
         },
         colors: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter by colors (Depop only). Options: black, white, red, blue, green, yellow, orange, pink, purple, brown, grey, cream, multi, silver, gold',
+          description: 'Filter by colors (Depop, Poshmark). Options: black, white, red, blue, green, yellow, orange, pink, purple, brown, grey, cream, multi, silver, gold',
         }
       },
       required: ['query']
@@ -103,7 +104,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_listing_details',
-    description: 'Get full details for a specific listing using an ID from search results. Facebook returns: description, all photos, location, seller name, delivery types, shipping availability. eBay returns: description, all photos, location (city/state/country), seller username, shipping service options. Depop returns: description, all photos, seller username, shipping availability.',
+    description: 'Get full details for a specific listing using an ID from search results. Facebook returns: description, all photos, location, seller name, delivery types, shipping availability. eBay returns: description, all photos, location (city/state/country), seller username, shipping service options. Depop returns: description, all photos, seller username, shipping availability. Poshmark returns: description, all photos, seller username, shipping availability.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -273,6 +274,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         } else if (targetMp === 'depop') {
           const depop = getMarketplace('depop') as DepopMarketplace;
           details = await depop.getListingDetails(listingId);
+        } else if (targetMp === 'poshmark') {
+          const poshmark = getMarketplace('poshmark') as PoshmarkMarketplace;
+          details = await poshmark.getListingDetails(listingId);
         } else {
           const fb = getMarketplace('facebook') as FacebookMarketplace;
           details = await fb.getListingDetails(listingId);

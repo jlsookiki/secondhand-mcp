@@ -6,12 +6,14 @@ import { Marketplace } from './base';
 import { FacebookMarketplace } from './facebook';
 import { EbayMarketplace } from './ebay';
 import { DepopMarketplace } from './depop';
+import { PoshmarkMarketplace } from './poshmark';
 import { findChrome } from '../browser';
 
 export { Marketplace, BaseMarketplace } from './base';
 export { FacebookMarketplace } from './facebook';
 export { EbayMarketplace } from './ebay';
 export { DepopMarketplace } from './depop';
+export { PoshmarkMarketplace } from './poshmark';
 
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();
@@ -21,6 +23,7 @@ const allMarketplaces: Record<string, () => Marketplace> = {
   facebook: () => new FacebookMarketplace(),
   ebay: () => new EbayMarketplace(),
   depop: () => new DepopMarketplace(),
+  poshmark: () => new PoshmarkMarketplace(),
 };
 
 // Register marketplaces based on MARKETPLACES env var (comma-separated).
@@ -41,6 +44,10 @@ export function initializeMarketplaces(): void {
     }
     if (name === 'depop' && !findChrome()) {
       console.error('Depop marketplace enabled but Chrome/Chromium not found — skipping');
+      continue;
+    }
+    if (name === 'poshmark' && !findChrome()) {
+      console.error('Poshmark marketplace enabled but Chrome/Chromium not found — skipping');
       continue;
     }
     registerMarketplace(factory());
