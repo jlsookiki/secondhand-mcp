@@ -56,7 +56,7 @@ eBay and Depop are both optional — if eBay API keys are missing or Chrome isn'
 
 ### Depop / Chrome Requirement
 
-Depop uses a headless browser to bypass Cloudflare. If **Google Chrome or Chromium** is installed on your system, Depop is automatically enabled — no config needed. If Chrome isn't found, Depop is silently skipped.
+Depop requires a headless browser. If **Google Chrome or Chromium** is installed on your system, Depop is automatically enabled — no config needed. If Chrome isn't found, Depop is silently skipped.
 
 On macOS, the first time you search Depop, you may see a system prompt asking to allow Node.js to control Chrome. This is expected — puppeteer needs to launch Chrome in headless mode. Allow it once and it won't ask again.
 
@@ -145,11 +145,11 @@ List all enabled marketplaces and their status.
 
 ## How It Works
 
-**Facebook Marketplace** — Resolves city names to coordinates, then searches with location/price/query filters. No login or browser needed.
+**Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates. No login or browser needed.
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed.
 
-**Depop** — Uses a headless browser (puppeteer-core + stealth plugin). The browser instance is shared across requests.
+**Depop** — Uses a headless browser to search listings with support for category, condition, size, and color filters. The browser instance is shared across requests.
 
 ## Development
 
@@ -168,9 +168,9 @@ npm run build
 
 ## Limitations
 
-- **Facebook**: Uses undocumented GraphQL API — may break if Facebook changes `doc_id` values
+- **Facebook**: May break if Facebook changes their frontend
 - **eBay**: Requires developer API keys (free tier available)
-- **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search) due to headless browser startup
+- **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search)
 - **Rate limiting**: Don't make too many requests too quickly
 
 ## License
