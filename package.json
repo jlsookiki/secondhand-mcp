@@ -1,6 +1,6 @@
 {
   "name": "secondhand-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for searching secondhand marketplaces — Facebook Marketplace, eBay, and Depop. Search listings, filter by price/category/condition, and get full details with photos.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
