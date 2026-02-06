@@ -42,7 +42,7 @@ export class PoshmarkMarketplace extends BaseMarketplace {
   readonly requiresAuth = false;
 
   async search(params: SearchParams): Promise<SearchResult> {
-    const { query, maxPrice, minPrice, limit = 48, sort, condition, sizes, colors } = params;
+    const { query, maxPrice, minPrice, limit = 48, sort, condition, category, brand, department, sizes, colors } = params;
 
     let page: Page | undefined;
     try {
@@ -64,7 +64,7 @@ export class PoshmarkMarketplace extends BaseMarketplace {
 
       // Build search URL with filters
       const searchUrl = this.buildSearchUrl(query, {
-        sort, condition, minPrice, maxPrice, sizes, colors,
+        sort, condition, minPrice, maxPrice, category, brand, department, sizes, colors,
       });
 
       await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -160,7 +160,8 @@ export class PoshmarkMarketplace extends BaseMarketplace {
 
   private buildSearchUrl(query: string, filters: {
     sort?: string; condition?: string; minPrice?: number;
-    maxPrice?: number; sizes?: string[]; colors?: string[];
+    maxPrice?: number; category?: string; brand?: string;
+    department?: string; sizes?: string[]; colors?: string[];
   }): string {
     const url = new URL(SEARCH_URL);
     url.searchParams.set('query', query);
@@ -181,6 +182,18 @@ export class PoshmarkMarketplace extends BaseMarketplace {
       const min = filters.minPrice ?? 0;
       const max = filters.maxPrice ?? '';
       url.searchParams.append('price[]', `${min}-${max}`);
+    }
+
+    if (filters.department) {
+      url.searchParams.set('department', filters.department);
+    }
+
+    if (filters.brand) {
+      url.searchParams.append('brand[]', filters.brand);
+    }
+
+    if (filters.category) {
+      url.searchParams.set('category_v2', filters.category);
     }
 
     if (filters.sizes) {

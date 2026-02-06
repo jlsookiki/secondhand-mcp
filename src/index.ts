@@ -86,7 +86,15 @@ const tools: Tool[] = [
         },
         category: {
           type: 'string',
-          description: 'Product category (Depop only). Options: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear',
+          description: 'Product category. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
+        },
+        brand: {
+          type: 'string',
+          description: 'Filter by brand (Poshmark only). e.g. "Nike", "Levi\'s", "Gucci"',
+        },
+        department: {
+          type: 'string',
+          description: 'Filter by department (Poshmark only). Options: Women, Men, Kids',
         },
         sizes: {
           type: 'array',
@@ -167,6 +175,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         sort?: string;
         condition?: string;
         category?: string;
+        brand?: string;
+        department?: string;
         sizes?: string[];
         colors?: string[];
       };
@@ -181,6 +191,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         sort: params.sort as SearchParams['sort'],
         condition: params.condition as SearchParams['condition'],
         category: params.category,
+        brand: params.brand,
+        department: params.department,
         sizes: params.sizes,
         colors: params.colors,
       };

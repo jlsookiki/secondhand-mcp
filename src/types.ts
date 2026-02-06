@@ -29,6 +29,8 @@ export interface SearchParams {
   showSold?: boolean;
   sort?: 'relevance' | 'newest' | 'price_low_to_high' | 'price_high_to_low' | 'most_popular';
   category?: string;
+  brand?: string;
+  department?: string;
   sizes?: string[];
   colors?: string[];
 }
