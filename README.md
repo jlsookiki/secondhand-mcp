@@ -4,7 +4,19 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that le
 
 Works with Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
 
-> **Want to skip the setup?** [Secondhand MCP Cloud](https://secondhandmcp.com) is the hosted version — connects to Claude.ai and ChatGPT in 30 seconds, no install or Chrome required. Free tier included.
+<div align="center">
+<table>
+<tr>
+<td>
+<a href="https://secondhandmcp.com"><img src="https://secondhandmcp.com/public/logo.png" width="48" alt="Secondhand MCP Cloud"></a>
+</td>
+<td>
+<strong>Want to skip the setup?</strong><br>
+<a href="https://secondhandmcp.com">Secondhand MCP Cloud</a> is the hosted version — connects to Claude.ai and ChatGPT in 30 seconds, no install or Chrome required. Free tier included.
+</td>
+</tr>
+</table>
+</div>
 
 ## Supported Marketplaces
 
