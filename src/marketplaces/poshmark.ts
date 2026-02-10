@@ -7,9 +7,9 @@
  * No authentication required for public search.
  */
 
-import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult, Listing, ListingDetails } from '../types';
-import { newPage } from '../browser';
+import { BaseMarketplace } from './base.js';
+import { SearchParams, SearchResult, Listing, ListingDetails } from '../types.js';
+import { newPage } from '../browser.js';
 import type { Page } from 'puppeteer-core';
 
 const POSHMARK_BASE = 'https://poshmark.com';

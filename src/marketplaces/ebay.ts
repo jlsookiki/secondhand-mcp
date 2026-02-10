@@ -6,8 +6,8 @@
  * Docs: https://developer.ebay.com/api-docs/buy/browse/overview.html
  */
 
-import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult, Listing, ListingDetails } from '../types';
+import { BaseMarketplace } from './base.js';
+import { SearchParams, SearchResult, Listing, ListingDetails } from '../types.js';
 
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
 const BROWSE_API_URL = 'https://api.ebay.com/buy/browse/v1';
@@ -20,6 +20,11 @@ const CONDITION_MAP: Record<string, string> = {
   fair: 'FAIR',
 };
 
+export interface EbayCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
 export class EbayMarketplace extends BaseMarketplace {
   readonly name = 'ebay';
   readonly displayName = 'eBay';
@@ -27,13 +32,21 @@ export class EbayMarketplace extends BaseMarketplace {
 
   private accessToken: string | null = null;
   private tokenExpiresAt = 0;
+  private readonly _clientId: string | undefined;
+  private readonly _clientSecret: string | undefined;
+
+  constructor(credentials?: EbayCredentials) {
+    super();
+    this._clientId = credentials?.clientId ?? process.env.EBAY_CLIENT_ID;
+    this._clientSecret = credentials?.clientSecret ?? process.env.EBAY_CLIENT_SECRET;
+  }
 
   private get clientId(): string | undefined {
-    return process.env.EBAY_CLIENT_ID;
+    return this._clientId;
   }
 
   private get clientSecret(): string | undefined {
-    return process.env.EBAY_CLIENT_SECRET;
+    return this._clientSecret;
   }
 
   async search(params: SearchParams): Promise<SearchResult> {
@@ -95,6 +108,9 @@ export class EbayMarketplace extends BaseMarketplace {
         success: true,
         listings,
         totalFound: data.total ?? listings.length,
+        ...(listings.length === 0 && {
+          note: 'No eBay listings found for this query. eBay searches nationally (not location-based). Try broadening your search terms.',
+        }),
       };
     } catch (error) {
       return this.createError(`eBay search failed: ${error}`);

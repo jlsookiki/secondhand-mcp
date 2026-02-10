@@ -6,11 +6,12 @@
  * Browser instance is lazy-initialized and shared across requests.
  */
 
-import puppeteer from 'puppeteer-extra';
+import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { Browser, Page } from 'puppeteer-core';
 import { existsSync } from 'fs';
 
+const puppeteer = puppeteerExtra.default ?? puppeteerExtra;
 puppeteer.use(StealthPlugin());
 
 let browser: Browser | null = null;
@@ -45,10 +46,11 @@ export async function getBrowser(): Promise<Browser> {
     return browser;
   }
 
-  const executablePath = findChrome();
+  // In Docker/production, use PUPPETEER_EXECUTABLE_PATH. Fall back to local detection for dev.
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || findChrome();
   if (!executablePath) {
     throw new Error(
-      'Chrome/Chromium not found. Install Google Chrome or set a custom path. ' +
+      'Chrome/Chromium not found. Set PUPPETEER_EXECUTABLE_PATH or install Google Chrome. ' +
       `Checked: ${(CHROME_PATHS[process.platform] ?? []).join(', ')}`
     );
   }
@@ -56,11 +58,18 @@ export async function getBrowser(): Promise<Browser> {
   browser = await (puppeteer as any).launch({
     headless: true,
     executablePath,
+    protocolTimeout: 60000,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--single-process',
+      '--no-zygote',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-software-rasterizer',
+      '--js-flags=--max-old-space-size=256',
     ],
   }) as Browser;
 

@@ -8,8 +8,9 @@
  * doc_id values may need updating if Facebook changes their frontend.
  */
 
-import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult, Listing, ListingDetails, LocationCoordinates } from '../types';
+import { ProxyAgent } from 'undici';
+import { BaseMarketplace } from './base.js';
+import { SearchParams, SearchResult, Listing, ListingDetails, LocationCoordinates } from '../types.js';
 
 // GraphQL endpoint and operation identifiers
 const GRAPHQL_URL = 'https://www.facebook.com/api/graphql/';
@@ -27,6 +28,11 @@ const GRAPHQL_HEADERS: Record<string, string> = {
 
 // Max price value Facebook uses as "no upper limit"
 const MAX_PRICE_SENTINEL = 214748364700;
+
+// Residential proxy for Facebook requests (avoids datacenter IP rate limits)
+const proxyAgent = process.env.SMARTPROXY_URL
+  ? new ProxyAgent(process.env.SMARTPROXY_URL)
+  : undefined;
 
 export class FacebookMarketplace extends BaseMarketplace {
   readonly name = 'facebook';
@@ -271,6 +277,8 @@ export class FacebookMarketplace extends BaseMarketplace {
       method: 'POST',
       headers: GRAPHQL_HEADERS,
       body: body.toString(),
+      // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
+      dispatcher: proxyAgent,
     });
 
     if (!response.ok) {

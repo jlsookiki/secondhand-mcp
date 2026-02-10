@@ -2,6 +2,7 @@
   "name": "secondhand-mcp",
   "version": "0.2.0",
   "description": "MCP server for searching secondhand marketplaces — Facebook Marketplace, eBay, and Depop. Search listings, filter by price/category/condition, and get full details with photos.",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -38,7 +39,8 @@
     "@modelcontextprotocol/sdk": "~1.5.0",
     "puppeteer-core": "^24.37.1",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "undici": "^7.21.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
