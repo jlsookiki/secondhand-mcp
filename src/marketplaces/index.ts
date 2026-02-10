@@ -2,18 +2,18 @@
  * Marketplace registry - central place to register and access all marketplace implementations
  */
 
-import { Marketplace } from './base';
-import { FacebookMarketplace } from './facebook';
-import { EbayMarketplace } from './ebay';
-import { DepopMarketplace } from './depop';
-import { PoshmarkMarketplace } from './poshmark';
-import { findChrome } from '../browser';
+import { Marketplace } from './base.js';
+import { FacebookMarketplace } from './facebook.js';
+import { EbayMarketplace } from './ebay.js';
+import { DepopMarketplace } from './depop.js';
+import { PoshmarkMarketplace } from './poshmark.js';
+import { findChrome } from '../browser.js';
 
-export { Marketplace, BaseMarketplace } from './base';
-export { FacebookMarketplace } from './facebook';
-export { EbayMarketplace } from './ebay';
-export { DepopMarketplace } from './depop';
-export { PoshmarkMarketplace } from './poshmark';
+export { Marketplace, BaseMarketplace } from './base.js';
+export { FacebookMarketplace } from './facebook.js';
+export { EbayMarketplace } from './ebay.js';
+export { DepopMarketplace } from './depop.js';
+export { PoshmarkMarketplace } from './poshmark.js';
 
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();

@@ -7,9 +7,9 @@
  * No Depop authentication required.
  */
 
-import { BaseMarketplace } from './base';
-import { SearchParams, SearchResult, Listing, ListingDetails } from '../types';
-import { newPage } from '../browser';
+import { BaseMarketplace } from './base.js';
+import { SearchParams, SearchResult, Listing, ListingDetails } from '../types.js';
+import { newPage } from '../browser.js';
 
 const DEPOP_HOME = 'https://www.depop.com/';
 const SEARCH_API = 'https://webapi.depop.com/api/v2/search/products/';

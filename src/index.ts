@@ -15,7 +15,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { SearchParams, SearchResult, Listing, ListingDetails } from './types';
+import { SearchParams, SearchResult, Listing, ListingDetails } from './types.js';
 import {
   initializeMarketplaces,
   getMarketplace,
@@ -25,7 +25,7 @@ import {
   EbayMarketplace,
   DepopMarketplace,
   PoshmarkMarketplace,
-} from './marketplaces';
+} from './marketplaces/index.js';
 
 // Initialize marketplaces
 initializeMarketplaces();

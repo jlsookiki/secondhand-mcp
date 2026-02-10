@@ -2,7 +2,7 @@
  * Base interface for all marketplace implementations
  */
 
-import { SearchParams, SearchResult, LocationCoordinates } from '../types';
+import { SearchParams, SearchResult, LocationCoordinates } from '../types.js';
 
 export interface Marketplace {
   /** Unique identifier for this marketplace */

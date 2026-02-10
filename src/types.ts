@@ -41,6 +41,7 @@ export interface SearchResult {
   listings: Listing[];
   error?: string;
   totalFound?: number;
+  note?: string;
 }
 
 export interface ListingDetails {
