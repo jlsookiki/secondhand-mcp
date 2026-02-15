@@ -124,6 +124,11 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Which marketplace the listing is from (default: facebook)',
           default: 'facebook'
+        },
+        includeImages: {
+          type: 'boolean',
+          description: 'Return actual image content instead of URLs. Images are returned as base64-encoded content blocks that the model can see.',
+          default: false
         }
       },
       required: ['listingId']
@@ -264,9 +269,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'get_listing_details': {
-      const { listingId, marketplace: mpName } = args as {
+      const { listingId, marketplace: mpName, includeImages } = args as {
         listingId: string;
         marketplace?: string;
+        includeImages?: boolean;
       };
 
       if (!listingId) {
@@ -292,6 +298,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         } else {
           const fb = getMarketplace('facebook') as FacebookMarketplace;
           details = await fb.getListingDetails(listingId);
+        }
+
+        // When includeImages is set, fetch images and return as base64 content blocks
+        if (includeImages && details.images.length > 0) {
+          const imageUrls = details.images.slice(0, 5);
+          const imageResults = await Promise.allSettled(
+            imageUrls.map(async (url) => {
+              const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+              if (!res.ok) return null;
+              const mimeType = res.headers.get('content-type') || 'image/jpeg';
+              const buffer = Buffer.from(await res.arrayBuffer());
+              return { data: buffer.toString('base64'), mimeType };
+            }),
+          );
+
+          const contentBlocks: Array<
+            { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+          > = [];
+
+          // Text block with details (images replaced by count)
+          const { images: _, ...detailsWithoutImages } = details;
+          contentBlocks.push({
+            type: 'text',
+            text: formatListingDetails({ ...detailsWithoutImages, images: [] }) +
+              `\n\n🖼️ ${details.images.length} photo${details.images.length > 1 ? 's' : ''} (${imageUrls.length} shown below)`,
+          });
+
+          for (const result of imageResults) {
+            if (result.status === 'fulfilled' && result.value) {
+              contentBlocks.push({ type: 'image', ...result.value });
+            }
+          }
+
+          // Fall back to URLs if all image fetches failed
+          if (contentBlocks.length === 1) {
+            return {
+              content: [{ type: 'text', text: formatListingDetails(details) }],
+            };
+          }
+
+          return { content: contentBlocks };
         }
 
         return {
