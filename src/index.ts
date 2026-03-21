@@ -302,16 +302,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // When includeImages is set, fetch images and return as base64 content blocks
         if (includeImages && details.images.length > 0) {
-          const imageUrls = details.images.slice(0, 5);
-          const imageResults = await Promise.allSettled(
-            imageUrls.map(async (url) => {
-              const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-              if (!res.ok) return null;
-              const mimeType = res.headers.get('content-type') || 'image/jpeg';
-              const buffer = Buffer.from(await res.arrayBuffer());
-              return { data: buffer.toString('base64'), mimeType };
-            }),
-          );
+          const imageUrls = details.images;
+          // Fetch all images in batches of 5
+          const imageResults: PromiseSettledResult<{ data: string; mimeType: string } | null>[] = [];
+          for (let i = 0; i < imageUrls.length; i += 5) {
+            const batch = imageUrls.slice(i, i + 5);
+            const batchResults = await Promise.allSettled(
+              batch.map(async (url) => {
+                const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+                if (!res.ok) return null;
+                const mimeType = res.headers.get('content-type') || 'image/jpeg';
+                const buffer = Buffer.from(await res.arrayBuffer());
+                return { data: buffer.toString('base64'), mimeType };
+              }),
+            );
+            imageResults.push(...batchResults);
+          }
 
           const contentBlocks: Array<
             { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
@@ -322,7 +328,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           contentBlocks.push({
             type: 'text',
             text: formatListingDetails({ ...detailsWithoutImages, images: [] }) +
-              `\n\n🖼️ ${details.images.length} photo${details.images.length > 1 ? 's' : ''} (${imageUrls.length} shown below)`,
+              `\n\n🖼️ ${details.images.length} photo${details.images.length > 1 ? 's' : ''}`,
           });
 
           for (const result of imageResults) {
