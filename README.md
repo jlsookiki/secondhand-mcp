@@ -30,7 +30,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
-        "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
+        "EBAY_CLIENT_SECRET": "your-ebay-client-secret",
+        "EBAY_MARKETPLACE_ID": "EBAY_US"
       }
     }
   }
@@ -49,7 +50,8 @@ Add to `~/.claude/.mcp.json`:
       "args": ["-y", "secondhand-mcp"],
       "env": {
         "EBAY_CLIENT_ID": "your-ebay-client-id",
-        "EBAY_CLIENT_SECRET": "your-ebay-client-secret"
+        "EBAY_CLIENT_SECRET": "your-ebay-client-secret",
+        "EBAY_MARKETPLACE_ID": "EBAY_US"
       }
     }
   }
@@ -89,6 +91,33 @@ eBay uses the official [Browse API](https://developer.ebay.com/api-docs/buy/brow
 1. Create an account at [developer.ebay.com](https://developer.ebay.com)
 2. Create an application to get a Client ID and Client Secret
 3. Add them to your MCP config as `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET`
+
+### eBay Marketplace / Region
+
+By default the server targets the **US** eBay site. To search a different regional marketplace, set the `EBAY_MARKETPLACE_ID` environment variable:
+
+```json
+{
+  "env": {
+    "EBAY_MARKETPLACE_ID": "EBAY_DE"
+  }
+}
+```
+
+Common values:
+
+| Value | Site |
+|-------|------|
+| `EBAY_US` | ebay.com (default) |
+| `EBAY_DE` | ebay.de |
+| `EBAY_GB` | ebay.co.uk |
+| `EBAY_AU` | ebay.com.au |
+| `EBAY_FR` | ebay.fr |
+| `EBAY_IT` | ebay.it |
+| `EBAY_ES` | ebay.es |
+| `EBAY_CA` | ebay.ca |
+
+The full list is available in the [eBay API docs](https://developer.ebay.com/api-docs/static/rest-request-components.html#marketpl).
 
 ## Tools
 
@@ -153,7 +182,7 @@ List all enabled marketplaces and their status.
 
 **Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates. No login or browser needed.
 
-**eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed.
+**eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed. The target regional marketplace is controlled by `EBAY_MARKETPLACE_ID` (default: `EBAY_US`).
 
 **Depop** — Uses a headless browser to search listings with support for category, condition, size, and color filters. The browser instance is shared across requests.
 

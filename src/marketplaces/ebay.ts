@@ -23,6 +23,8 @@ const CONDITION_MAP: Record<string, string> = {
 export interface EbayCredentials {
   clientId: string;
   clientSecret: string;
+  /** eBay marketplace ID, e.g. 'EBAY_US', 'EBAY_DE', 'EBAY_GB'. Defaults to 'EBAY_US'. */
+  marketplaceId?: string;
 }
 
 export class EbayMarketplace extends BaseMarketplace {
@@ -34,11 +36,14 @@ export class EbayMarketplace extends BaseMarketplace {
   private tokenExpiresAt = 0;
   private readonly _clientId: string | undefined;
   private readonly _clientSecret: string | undefined;
+  private readonly _marketplaceId: string;
 
   constructor(credentials?: EbayCredentials) {
     super();
     this._clientId = credentials?.clientId ?? process.env.EBAY_CLIENT_ID;
     this._clientSecret = credentials?.clientSecret ?? process.env.EBAY_CLIENT_SECRET;
+    this._marketplaceId =
+      credentials?.marketplaceId ?? process.env.EBAY_MARKETPLACE_ID ?? 'EBAY_US';
   }
 
   private get clientId(): string | undefined {
@@ -47,6 +52,10 @@ export class EbayMarketplace extends BaseMarketplace {
 
   private get clientSecret(): string | undefined {
     return this._clientSecret;
+  }
+
+  get marketplaceId(): string {
+    return this._marketplaceId;
   }
 
   async search(params: SearchParams): Promise<SearchResult> {
@@ -89,7 +98,7 @@ export class EbayMarketplace extends BaseMarketplace {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+            'X-EBAY-C-MARKETPLACE-ID': this._marketplaceId,
           },
         }
       );
@@ -123,7 +132,7 @@ export class EbayMarketplace extends BaseMarketplace {
     const response = await fetch(`${BROWSE_API_URL}/item/${encodeURIComponent(itemId)}`, {
       headers: {
         Authorization: `Bearer ${token}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        'X-EBAY-C-MARKETPLACE-ID': this._marketplaceId,
       },
     });
 
