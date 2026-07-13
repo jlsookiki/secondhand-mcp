@@ -25,6 +25,7 @@ import {
   EbayMarketplace,
   DepopMarketplace,
   PoshmarkMarketplace,
+  resizeEbayImageUrl,
 } from './marketplaces/index.js';
 
 // Initialize marketplaces
@@ -127,8 +128,18 @@ const tools: Tool[] = [
         },
         includeImages: {
           type: 'boolean',
-          description: 'Return actual image content instead of URLs. Images are returned as base64-encoded content blocks that the model can see.',
+          description: 'Return actual image content instead of URLs. ALL of the listing\'s photos are fetched server-side and returned as base64 image blocks in this single call — no need to call again per image.',
           default: false
+        },
+        imageSize: {
+          type: 'string',
+          enum: ['thumb', 'standard', 'full'],
+          description: 'Resolution for eBay images when includeImages is set: thumb (~400px, cheapest — good for scanning a whole gallery), standard (~800px, default), full (~1600px). Non-eBay images are returned as-is. Start with thumb for many photos, then re-request full for the specific ones you want to inspect closely.',
+          default: 'standard'
+        },
+        maxImages: {
+          type: 'number',
+          description: 'Cap the number of images returned (default: all). Use to keep the response small for listings with many photos.'
         }
       },
       required: ['listingId']
@@ -269,10 +280,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'get_listing_details': {
-      const { listingId, marketplace: mpName, includeImages } = args as {
+      const { listingId, marketplace: mpName, includeImages, imageSize, maxImages } = args as {
         listingId: string;
         marketplace?: string;
         includeImages?: boolean;
+        imageSize?: 'thumb' | 'standard' | 'full';
+        maxImages?: number;
       };
 
       if (!listingId) {
@@ -302,7 +315,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // When includeImages is set, fetch images and return as base64 content blocks
         if (includeImages && details.images.length > 0) {
-          const imageUrls = details.images;
+          const IMAGE_SIZE_PX = { thumb: 400, standard: 800, full: 1600 } as const;
+          const sizePx = IMAGE_SIZE_PX[imageSize ?? 'standard'];
+          const totalImages = details.images.length;
+          const imageUrls = details.images
+            .slice(0, maxImages ?? totalImages)
+            .map((url) => resizeEbayImageUrl(url, sizePx));
           // Fetch all images in batches of 5
           const imageResults: PromiseSettledResult<{ data: string; mimeType: string } | null>[] = [];
           for (let i = 0; i < imageUrls.length; i += 5) {
@@ -325,10 +343,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           // Text block with details (images replaced by count)
           const { images: _, ...detailsWithoutImages } = details;
+          const returnedCount = imageUrls.length;
+          const photoLine = returnedCount < totalImages
+            ? `\n\n🖼️ Showing ${returnedCount} of ${totalImages} photos (${imageSize ?? 'standard'} size)`
+            : `\n\n🖼️ ${totalImages} photo${totalImages > 1 ? 's' : ''} (${imageSize ?? 'standard'} size)`;
           contentBlocks.push({
             type: 'text',
-            text: formatListingDetails({ ...detailsWithoutImages, images: [] }) +
-              `\n\n🖼️ ${details.images.length} photo${details.images.length > 1 ? 's' : ''}`,
+            text: formatListingDetails({ ...detailsWithoutImages, images: [] }) + photoLine,
           });
 
           for (const result of imageResults) {
