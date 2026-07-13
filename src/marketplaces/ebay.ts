@@ -25,6 +25,24 @@ const CONDITION_MAP: Record<string, string> = {
   fair: 'FAIR',
 };
 
+/**
+ * eBay's Browse API returns image URLs at a small default size (e.g. s-l225 /
+ * s-l500). The same CDN object is available at other sizes by rewriting the
+ * `s-l<N>` size token (max dimension in px) and dropping any `/thumbs/` path
+ * segment. Non-eBay URLs, or shapes we don't recognize, pass through unchanged.
+ */
+export function resizeEbayImageUrl(url: string, maxPx: number): string {
+  if (!url || !url.includes('ebayimg.com')) return url;
+  return url
+    .replace('/thumbs/images/', '/images/')
+    .replace(/\/s-l\d+\.(jpg|jpeg|png|webp)/i, `/s-l${maxPx}.$1`);
+}
+
+/** 1600px is the largest size eBay reliably hosts for every image. */
+function toFullResImageUrl(url: string): string {
+  return resizeEbayImageUrl(url, 1600);
+}
+
 export interface EbayCredentials {
   clientId: string;
   clientSecret: string;
@@ -164,11 +182,11 @@ export class EbayMarketplace extends BaseMarketplace {
 
     const images: string[] = [];
     if (item.image?.imageUrl) {
-      images.push(item.image.imageUrl);
+      images.push(toFullResImageUrl(item.image.imageUrl));
     }
     if (Array.isArray(item.additionalImages)) {
       for (const img of item.additionalImages) {
-        if (img.imageUrl) images.push(img.imageUrl);
+        if (img.imageUrl) images.push(toFullResImageUrl(img.imageUrl));
       }
     }
 
@@ -213,7 +231,7 @@ export class EbayMarketplace extends BaseMarketplace {
 
         // Only grab primary image for search results; full set via getListingDetails
         const images: string[] = [];
-        if (item.image?.imageUrl) images.push(item.image.imageUrl);
+        if (item.image?.imageUrl) images.push(toFullResImageUrl(item.image.imageUrl));
 
         const location = item.itemLocation;
         const locationText = [location?.city, location?.stateOrProvince]
