@@ -11,7 +11,7 @@ import { findChrome } from '../browser.js';
 
 export { Marketplace, BaseMarketplace } from './base.js';
 export { FacebookMarketplace } from './facebook.js';
-export { EbayMarketplace } from './ebay.js';
+export { EbayMarketplace, resizeEbayImageUrl } from './ebay.js';
 export { DepopMarketplace } from './depop.js';
 export { PoshmarkMarketplace } from './poshmark.js';
 

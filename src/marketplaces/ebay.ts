@@ -27,15 +27,20 @@ const CONDITION_MAP: Record<string, string> = {
 
 /**
  * eBay's Browse API returns image URLs at a small default size (e.g. s-l225 /
- * s-l500). The same CDN object is available at higher resolution by rewriting
- * the `s-l<N>` size token and dropping any `/thumbs/` path segment. 1600px is
- * the largest size eBay reliably hosts for every image.
+ * s-l500). The same CDN object is available at other sizes by rewriting the
+ * `s-l<N>` size token (max dimension in px) and dropping any `/thumbs/` path
+ * segment. Non-eBay URLs, or shapes we don't recognize, pass through unchanged.
  */
-function toFullResImageUrl(url: string): string {
-  if (!url) return url;
+export function resizeEbayImageUrl(url: string, maxPx: number): string {
+  if (!url || !url.includes('ebayimg.com')) return url;
   return url
     .replace('/thumbs/images/', '/images/')
-    .replace(/\/s-l\d+\.(jpg|jpeg|png|webp)/i, '/s-l1600.$1');
+    .replace(/\/s-l\d+\.(jpg|jpeg|png|webp)/i, `/s-l${maxPx}.$1`);
+}
+
+/** 1600px is the largest size eBay reliably hosts for every image. */
+function toFullResImageUrl(url: string): string {
+  return resizeEbayImageUrl(url, 1600);
 }
 
 export interface EbayCredentials {
