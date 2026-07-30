@@ -26,6 +26,7 @@ export interface SearchParams {
   radius?: number; // in miles
   condition?: 'new' | 'like_new' | 'excellent' | 'good' | 'fair' | 'used' | 'any';
   limit?: number;
+  offset?: number; // starting result offset for pagination (eBay)
   showSold?: boolean;
   sort?: 'relevance' | 'newest' | 'price_low_to_high' | 'price_high_to_low' | 'most_popular';
   category?: string;
