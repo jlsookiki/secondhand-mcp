@@ -427,15 +427,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
         > = [];
         const { images: _i, ...detailsBase } = details;
-        const failNote = failedImages.length
-          ? `\n\n⚠️ ${failedImages.length} photo(s) could not be fetched server-side — fetch these directly:\n` +
-            failedImages.map((r, i) => `${i + 1}. ${r.url}`).join('\n')
-          : '';
+        // Always list source URLs in text: the inline base64 blocks below only
+        // render in clients that support MCP image content; when they don't,
+        // these URLs are the fallback (open/screenshot them directly).
+        const okUrls = okImages.map((r) => r.url);
+        const urlNote =
+          `\n\nImage URLs (open directly if the inline images above don't render):\n` +
+          okUrls.map((u, i) => `${i + 1}. ${u}`).join('\n') +
+          (failedImages.length
+            ? `\n\n⚠️ ${failedImages.length} photo(s) could not be fetched server-side — fetch these directly:\n` +
+              failedImages.map((r, i) => `${i + 1}. ${r.url}`).join('\n')
+            : '');
         contentBlocks.push({
           type: 'text',
           text:
             formatListingDetails({ ...detailsBase, images: [] }) +
-            `\n\n🖼️ ${okImages.length} of ${total} photo(s) inline (${sizeKey})` + failNote,
+            `\n\n🖼️ ${okImages.length} of ${total} photo(s) inline (${sizeKey})` + urlNote,
         });
         for (const r of okImages) {
           contentBlocks.push({ type: 'image', data: r.data!, mimeType: r.mimeType! });
