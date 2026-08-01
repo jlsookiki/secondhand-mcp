@@ -389,7 +389,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 headers: {
                   'User-Agent': IMAGE_FETCH_UA,
                   Referer: 'https://www.ebay.com/',
-                  Accept: 'image/avif,image/webp,image/png,image/*,*/*',
+                  // Force JPEG/PNG — clients (e.g. claude.ai chat) may not render
+                  // inline WEBP/AVIF blocks, so don't let the CDN negotiate to them.
+                  Accept: 'image/jpeg,image/png;q=0.9,*/*;q=0.1',
                 },
                 signal: AbortSignal.timeout(10_000),
               });
