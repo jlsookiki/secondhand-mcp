@@ -31,6 +31,26 @@ import {
 // Initialize marketplaces
 initializeMarketplaces();
 
+// Image handling shared by get_listing_details.
+const IMAGE_SIZE_PX = { thumb: 400, standard: 800, full: 1600 } as const;
+// A real browser UA + Referer — eBay's CDN serves placeholder/blocked responses
+// to bare server-side fetches, which is why inline base64 came back blank.
+const IMAGE_FETCH_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+/** Magic-byte sniff so we never base64 an HTML error page or 1x1 placeholder as an image. */
+function looksLikeImage(buf: Buffer): boolean {
+  if (buf.length < 12) return false;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true; // JPEG
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true; // PNG
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true; // GIF
+  if (
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) return true; // WEBP (RIFF....WEBP)
+  return false;
+}
+
 // Define available tools
 const tools: Tool[] = [
   {
@@ -118,7 +138,7 @@ const tools: Tool[] = [
   },
   {
     name: 'get_listing_details',
-    description: 'Get full details for a specific listing using an ID from search results. Facebook returns: description, all photos, location, seller name, delivery types, shipping availability. eBay returns: description, all photos, location (city/state/country), seller username, shipping service options. Depop returns: description, all photos, seller username, shipping availability. Poshmark returns: description, all photos, seller username, shipping availability.',
+    description: 'Get full details for a specific listing using an ID from search results: description, all photos, location, seller info, and shipping. Photos: by default (imageMode:"urls") you get direct full-resolution CDN image URLs to fetch yourself — most reliable, since some CDNs block server-side fetches. Set imageMode:"inline" (or includeImages:true) to have the server fetch the photos and return them as base64 image blocks inline. Use imageSize to trade resolution for payload and maxImages to cap the count.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -131,20 +151,25 @@ const tools: Tool[] = [
           description: 'Which marketplace the listing is from (default: facebook)',
           default: 'facebook'
         },
+        imageMode: {
+          type: 'string',
+          enum: ['urls', 'inline'],
+          description: 'How photos are returned. "urls" (default): direct full-resolution CDN image URLs for you to fetch yourself — most reliable, bypasses CDN blocking of server-side fetches, defaults to full resolution. "inline": server fetches every photo and returns them as base64 image blocks in this one call; if the server fetch is blocked it automatically falls back to returning the URLs.',
+          default: 'urls'
+        },
         includeImages: {
           type: 'boolean',
-          description: 'Return actual image content instead of URLs. ALL of the listing\'s photos are fetched server-side and returned as base64 image blocks in this single call — no need to call again per image.',
+          description: 'Deprecated alias for imageMode:"inline". If true and imageMode is unset, photos are fetched server-side and returned inline as base64.',
           default: false
         },
         imageSize: {
           type: 'string',
           enum: ['thumb', 'standard', 'full'],
-          description: 'Resolution for eBay images when includeImages is set: thumb (~400px, cheapest — good for scanning a whole gallery), standard (~800px, default), full (~1600px). Non-eBay images are returned as-is. Start with thumb for many photos, then re-request full for the specific ones you want to inspect closely.',
-          default: 'standard'
+          description: 'Resolution for eBay images: thumb (~400px), standard (~800px), full (~1600px). Defaults to full for imageMode "urls" and standard for "inline". Non-eBay images are returned as-is.',
         },
         maxImages: {
           type: 'number',
-          description: 'Cap the number of images returned (default: all). Use to keep the response small for listings with many photos.'
+          description: 'Cap the number of photos returned (default: all). Use to keep the response small for listings with many photos.'
         }
       },
       required: ['listingId']
@@ -287,9 +312,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'get_listing_details': {
-      const { listingId, marketplace: mpName, includeImages, imageSize, maxImages } = args as {
+      const { listingId, marketplace: mpName, imageMode, includeImages, imageSize, maxImages } = args as {
         listingId: string;
         marketplace?: string;
+        imageMode?: 'urls' | 'inline';
         includeImages?: boolean;
         imageSize?: 'thumb' | 'standard' | 'full';
         maxImages?: number;
@@ -320,64 +346,101 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           details = await fb.getListingDetails(listingId);
         }
 
-        // When includeImages is set, fetch images and return as base64 content blocks
-        if (includeImages && details.images.length > 0) {
-          const IMAGE_SIZE_PX = { thumb: 400, standard: 800, full: 1600 } as const;
-          const sizePx = IMAGE_SIZE_PX[imageSize ?? 'standard'];
-          const totalImages = details.images.length;
-          const imageUrls = details.images
-            .slice(0, maxImages ?? totalImages)
-            .map((url) => resizeEbayImageUrl(url, sizePx));
-          // Fetch all images in batches of 5
-          const imageResults: PromiseSettledResult<{ data: string; mimeType: string } | null>[] = [];
-          for (let i = 0; i < imageUrls.length; i += 5) {
-            const batch = imageUrls.slice(i, i + 5);
-            const batchResults = await Promise.allSettled(
-              batch.map(async (url) => {
-                const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-                if (!res.ok) return null;
-                const mimeType = res.headers.get('content-type') || 'image/jpeg';
-                const buffer = Buffer.from(await res.arrayBuffer());
-                return { data: buffer.toString('base64'), mimeType };
-              }),
-            );
-            imageResults.push(...batchResults);
-          }
+        const total = details.images.length;
+        const mode: 'urls' | 'inline' = imageMode ?? (includeImages ? 'inline' : 'urls');
 
-          const contentBlocks: Array<
-            { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
-          > = [];
-
-          // Text block with details (images replaced by count)
-          const { images: _, ...detailsWithoutImages } = details;
-          const returnedCount = imageUrls.length;
-          const photoLine = returnedCount < totalImages
-            ? `\n\n🖼️ Showing ${returnedCount} of ${totalImages} photos (${imageSize ?? 'standard'} size)`
-            : `\n\n🖼️ ${totalImages} photo${totalImages > 1 ? 's' : ''} (${imageSize ?? 'standard'} size)`;
-          contentBlocks.push({
-            type: 'text',
-            text: formatListingDetails({ ...detailsWithoutImages, images: [] }) + photoLine,
-          });
-
-          for (const result of imageResults) {
-            if (result.status === 'fulfilled' && result.value) {
-              contentBlocks.push({ type: 'image', ...result.value });
-            }
-          }
-
-          // Fall back to URLs if all image fetches failed
-          if (contentBlocks.length === 1) {
-            return {
-              content: [{ type: 'text', text: formatListingDetails(details) }],
-            };
-          }
-
-          return { content: contentBlocks };
+        // No photos on the listing — nothing image-specific to do.
+        if (total === 0) {
+          return { content: [{ type: 'text', text: formatListingDetails(details) }] };
         }
 
-        return {
-          content: [{ type: 'text', text: formatListingDetails(details) }],
+        // URL mode defaults to full res (client fetches directly, no payload cost
+        // to us); inline mode defaults to standard to keep the base64 reasonable.
+        const sizeKey = imageSize ?? (mode === 'urls' ? 'full' : 'standard');
+        const sizePx = IMAGE_SIZE_PX[sizeKey];
+        const urls = details.images
+          .slice(0, maxImages ?? total)
+          .map((url) => resizeEbayImageUrl(url, sizePx));
+
+        const renderUrls = () => {
+          const numbered = urls.map((u, i) => `${i + 1}. ${u}`).join('\n');
+          const markdown = urls.map((u, i) => `![Photo ${i + 1}](${u})`).join('\n');
+          return `\n\n🖼️ Photos (${urls.length}${urls.length < total ? ` of ${total}` : ''}, ${sizeKey}) — full-resolution CDN URLs, fetch directly:\n${numbered}\n\n${markdown}`;
         };
+
+        // ── URL mode: hand back direct CDN URLs, no server-side fetch ──
+        if (mode === 'urls') {
+          const { images: _u, ...detailsBase } = details;
+          return {
+            content: [{
+              type: 'text',
+              text: formatListingDetails({ ...detailsBase, images: [] }) + renderUrls(),
+            }],
+          };
+        }
+
+        // ── Inline mode: fetch server-side (hardened), return base64 ──
+        const fetched: Array<{ url: string; ok: boolean; data?: string; mimeType?: string }> = [];
+        for (let i = 0; i < urls.length; i += 5) {
+          const batch = urls.slice(i, i + 5);
+          const settled = await Promise.allSettled(
+            batch.map(async (url) => {
+              const res = await fetch(url, {
+                headers: {
+                  'User-Agent': IMAGE_FETCH_UA,
+                  Referer: 'https://www.ebay.com/',
+                  Accept: 'image/avif,image/webp,image/png,image/*,*/*',
+                },
+                signal: AbortSignal.timeout(10_000),
+              });
+              if (!res.ok) return { url, ok: false };
+              const mimeType = res.headers.get('content-type') || '';
+              const buffer = Buffer.from(await res.arrayBuffer());
+              if (!mimeType.startsWith('image/') || !looksLikeImage(buffer)) return { url, ok: false };
+              return { url, ok: true, data: buffer.toString('base64'), mimeType };
+            }),
+          );
+          for (const s of settled) {
+            fetched.push(s.status === 'fulfilled' ? s.value : { url: '', ok: false });
+          }
+        }
+
+        const okImages = fetched.filter((r) => r.ok);
+        const failedImages = fetched.filter((r) => !r.ok && r.url);
+
+        // Every server-side fetch failed (e.g. CDN blocking) — degrade to URL mode
+        // so the caller still gets usable links instead of blank blocks.
+        if (okImages.length === 0) {
+          const { images: _f, ...detailsBase } = details;
+          return {
+            content: [{
+              type: 'text',
+              text:
+                formatListingDetails({ ...detailsBase, images: [] }) +
+                '\n\n⚠️ Server-side image fetch failed for all photos (the CDN likely blocks datacenter requests).' +
+                renderUrls(),
+            }],
+          };
+        }
+
+        const contentBlocks: Array<
+          { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+        > = [];
+        const { images: _i, ...detailsBase } = details;
+        const failNote = failedImages.length
+          ? `\n\n⚠️ ${failedImages.length} photo(s) could not be fetched server-side — fetch these directly:\n` +
+            failedImages.map((r, i) => `${i + 1}. ${r.url}`).join('\n')
+          : '';
+        contentBlocks.push({
+          type: 'text',
+          text:
+            formatListingDetails({ ...detailsBase, images: [] }) +
+            `\n\n🖼️ ${okImages.length} of ${total} photo(s) inline (${sizeKey})` + failNote,
+        });
+        for (const r of okImages) {
+          contentBlocks.push({ type: 'image', data: r.data!, mimeType: r.mimeType! });
+        }
+        return { content: contentBlocks };
       } catch (error) {
         return {
           content: [{ type: 'text', text: `Error fetching listing details: ${error}` }],
