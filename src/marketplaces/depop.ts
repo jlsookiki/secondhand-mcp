@@ -1,182 +1,199 @@
 /**
  * Depop Marketplace implementation
  *
- * Uses a headless browser to bypass Cloudflare TLS fingerprinting,
- * then calls the Depop web API directly from within the browser context.
- * This gives us clean JSON without any DOM scraping.
- * No Depop authentication required.
+ * Depop's public JSON API (webapi.depop.com) now returns 403 to server-side
+ * requests, so we scrape Depop's server-rendered search results page instead.
+ * A headless browser (through a residential proxy, with IP rotation on block)
+ * loads the page; results are extracted from the rendered DOM.
+ *
+ * Selectors intentionally key off stable things — the /products/<slug> href,
+ * the <img>, and a price regex — NOT Depop's hashed CSS-module class names,
+ * which change on every deploy.
  */
 
 import { BaseMarketplace } from './base.js';
 import { SearchParams, SearchResult, Listing, ListingDetails } from '../types.js';
-import { newPage } from '../browser.js';
+import { newPage, rotateBrowser, withBrowserLock } from '../browser.js';
+import { Page } from 'puppeteer-core';
 
-const DEPOP_HOME = 'https://www.depop.com/';
-const SEARCH_API = 'https://webapi.depop.com/api/v2/search/products/';
-const EXTENDED_API = 'https://webapi.depop.com/api/v1/product/by-slug/';
+const MAX_RETRIES = 8;
+const NAV_TIMEOUT = 20000;
+
+const SEARCH_PAGE = 'https://www.depop.com/search/';
 const PRODUCT_URL = 'https://www.depop.com/products/';
-
-// Map user-friendly condition names to Depop API values
-const CONDITION_MAP: Record<string, string> = {
-  new: 'brand_new',
-  like_new: 'used_like_new',
-  excellent: 'used_excellent',
-  good: 'used_good',
-  fair: 'used_fair',
-};
 
 export class DepopMarketplace extends BaseMarketplace {
   readonly name = 'depop';
   readonly displayName = 'Depop';
   readonly requiresAuth = false;
 
-  async search(params: SearchParams): Promise<SearchResult> {
-    const { query, maxPrice, minPrice, limit = 24, sort, condition, category, sizes, colors } = params;
+  /**
+   * Navigate to a Depop URL with automatic IP rotation on proxy-auth (407),
+   * Cloudflare challenge, or timeout. Each retry restarts the browser with a
+   * new session ID → a different residential IP from the pool.
+   */
+  private async navigateWithRetry(url: string): Promise<Page> {
+    let lastError: string | undefined;
 
-    let page;
-    try {
-      page = await newPage();
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (attempt > 0) await rotateBrowser();
 
-      // Navigate to Depop first to establish Cloudflare cookies/session
-      await page.goto(DEPOP_HOME, { waitUntil: 'networkidle2', timeout: 30000 });
+      let page: Page | undefined;
+      try {
+        page = await newPage();
+        const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+        const status = resp?.status() ?? 0;
+        const title = await page.title();
 
-      // Build API URL
-      const apiUrl = new URL(SEARCH_API);
-      apiUrl.searchParams.set('what', query);
-      apiUrl.searchParams.set('itemsPerPage', String(limit));
-      apiUrl.searchParams.set('country', 'us');
-      apiUrl.searchParams.set('currency', 'USD');
-      apiUrl.searchParams.set('sort', sort || 'relevance');
-      if (minPrice != null) apiUrl.searchParams.set('priceMin', String(minPrice));
-      if (maxPrice != null) apiUrl.searchParams.set('priceMax', String(maxPrice));
-      if (condition && condition !== 'any') {
-        const depopCondition = CONDITION_MAP[condition];
-        if (depopCondition) apiUrl.searchParams.set('conditions', depopCondition);
-      }
-      if (category) apiUrl.searchParams.set('groups', category);
-      if (sizes) for (const s of sizes) apiUrl.searchParams.append('sizes', s);
-      if (colors) for (const c of colors) apiUrl.searchParams.append('colours', c);
-
-      // Call the API from within the browser context
-      const apiResponse: { error: string | null; data: any } = await page.evaluate(async (url: string) => {
-        try {
-          const res = await fetch(url, {
-            headers: {
-              'accept': 'application/json',
-            },
-          });
-          if (!res.ok) return { error: `HTTP ${res.status}`, data: null };
-          const data = await res.json();
-          return { error: null, data };
-        } catch (e: any) {
-          return { error: e.message || String(e), data: null };
+        if (status === 200 && !title.includes('Just a moment') && !title.includes('Forbidden')) {
+          return page;
         }
-      }, apiUrl.toString());
-
-      if (apiResponse.error || !apiResponse.data) {
-        return this.createError(`Depop API error: ${apiResponse.error}`);
+        lastError = `status=${status}, title="${title}"`;
+      } catch (err: any) {
+        lastError = err.message || String(err);
       }
 
-      const data = apiResponse.data;
-      const products: any[] = data.products || [];
-      const listings: Listing[] = [];
-
-      for (const product of products) {
-        if (listings.length >= limit) break;
-
-        const slug = product.slug;
-        if (!slug) continue;
-
-        const priceAmount = product.price?.priceAmount;
-        const currency = product.price?.currencyName === 'GBP' ? '£' : '$';
-        const priceStr = priceAmount != null ? `${currency}${priceAmount}` : 'Price not listed';
-        const priceNumeric = priceAmount != null ? parseFloat(priceAmount) : undefined;
-
-        // Get best available preview image (values are direct URL strings)
-        const preview = product.preview;
-        const images: string[] = [];
-        if (preview) {
-          const imgUrl = preview['480'] || preview['320'] || preview['640'];
-          if (imgUrl) images.push(imgUrl);
-        }
-
-        listings.push({
-          id: slug,
-          title: this.humanizeSlug(slug),
-          price: priceStr,
-          priceNumeric,
-          currency,
-          url: `${PRODUCT_URL}${slug}`,
-          images: images.length > 0 ? images : undefined,
-          marketplace: this.name,
-          scrapedAt: new Date().toISOString(),
-        });
-      }
-
-      return {
-        marketplace: this.name,
-        success: true,
-        listings,
-        totalFound: data.meta?.resultCount ?? listings.length,
-      };
-    } catch (error) {
-      return this.createError(`Depop search failed: ${error}`);
-    } finally {
+      console.log(`[depop] Attempt ${attempt + 1}/${MAX_RETRIES}: blocked (${lastError}). Rotating IP...`);
       if (page) await page.close().catch(() => {});
     }
+
+    throw new Error(`All ${MAX_RETRIES} proxy attempts failed. Last: ${lastError}`);
+  }
+
+  async search(params: SearchParams): Promise<SearchResult> {
+    const { query, maxPrice, minPrice, limit = 24, sort } = params;
+
+    return withBrowserLock(async () => {
+      let page: Page | undefined;
+      try {
+        const url = new URL(SEARCH_PAGE);
+        url.searchParams.set('q', query);
+
+        page = await this.navigateWithRetry(url.toString());
+        // SSR content is in the initial HTML, but wait briefly in case of hydration.
+        await page.waitForSelector('a[href*="/products/"]', { timeout: 8000 }).catch(() => {});
+
+        const raw: Array<{ slug: string; label: string; img: string; prices: string[] }> =
+          await page.evaluate(() => {
+            const seen = new Set<string>();
+            const out: any[] = [];
+            document.querySelectorAll('a[href*="/products/"]').forEach((a) => {
+              const href = a.getAttribute('href') || '';
+              const m = href.match(/\/products\/([^/?#]+)/);
+              if (!m) return;
+              const slug = m[1];
+              if (seen.has(slug)) return;
+              seen.add(slug);
+              const card = (a as HTMLElement).closest('li') || a.parentElement;
+              const img = a.querySelector('img') || (card && card.querySelector('img'));
+              const txt = ((card && (card as HTMLElement).innerText) || '').replace(/\s+/g, ' ').trim();
+              const prices = txt.match(/[£$€]\s?\d[\d.,]*/g) || [];
+              out.push({
+                slug,
+                label: a.getAttribute('aria-label') || (img && img.getAttribute('alt')) || '',
+                img: (img && (img.getAttribute('src') || (img.getAttribute('srcset') || '').split(' ')[0])) || '',
+                prices,
+              });
+            });
+            return out;
+          });
+
+        let listings: Listing[] = raw.map((r) => {
+          // Current price is the last money match ("was £X now £Y" → Y).
+          const priceStr = r.prices.length ? r.prices[r.prices.length - 1].replace(/\s/g, '') : 'Price not listed';
+          const parsed = this.parsePrice(priceStr);
+          return {
+            id: r.slug,
+            title: this.humanizeSlug(r.slug),
+            price: priceStr,
+            priceNumeric: parsed?.numeric,
+            currency: parsed?.currency || '$',
+            url: `${PRODUCT_URL}${r.slug}`,
+            images: r.img ? [r.img] : undefined,
+            marketplace: this.name,
+            scrapedAt: new Date().toISOString(),
+          };
+        });
+
+        // Depop's search page isn't price-filtered/sortable via URL reliably, so
+        // apply price bounds and price sort client-side over the rendered page.
+        if (minPrice != null) listings = listings.filter((l) => l.priceNumeric == null || l.priceNumeric >= minPrice);
+        if (maxPrice != null) listings = listings.filter((l) => l.priceNumeric == null || l.priceNumeric <= maxPrice);
+        if (sort === 'price_low_to_high') listings.sort((a, b) => (a.priceNumeric ?? Infinity) - (b.priceNumeric ?? Infinity));
+        if (sort === 'price_high_to_low') listings.sort((a, b) => (b.priceNumeric ?? -Infinity) - (a.priceNumeric ?? -Infinity));
+
+        listings = listings.slice(0, limit);
+
+        return {
+          marketplace: this.name,
+          success: true,
+          listings,
+          totalFound: listings.length,
+          ...(listings.length === 0 && {
+            note: 'No Depop listings parsed. The page may have been blocked or its markup changed.',
+          }),
+        };
+      } catch (error) {
+        return this.createError(`Depop search failed: ${error}`);
+      } finally {
+        if (page) await page.close().catch(() => {});
+      }
+    });
   }
 
   async getListingDetails(slug: string): Promise<ListingDetails> {
-    let page;
-    try {
-      page = await newPage();
+    return withBrowserLock(async () => {
+      let page: Page | undefined;
+      try {
+        page = await this.navigateWithRetry(`${PRODUCT_URL}${slug}/`);
 
-      // Navigate to product page — JSON-LD has description + images
-      await page.goto(`${PRODUCT_URL}${slug}/`, { waitUntil: 'networkidle2', timeout: 30000 });
+        const data: { description?: string; images: string[]; seller?: string } = await page.evaluate(() => {
+          const meta = (sel: string) =>
+            (document.querySelector(sel) as HTMLMetaElement | null)?.content || undefined;
 
-      // Extract JSON-LD structured data (description, images, price, condition)
-      const jsonLd: any = await page.evaluate(`
-        (() => {
-          const el = document.querySelector('script[type="application/ld+json"]');
-          if (!el) return null;
-          try { return JSON.parse(el.textContent || ''); } catch { return null; }
-        })()
-      `);
+          // Product images: og:image tags carry the full-size photos.
+          const images: string[] = [];
+          document.querySelectorAll('meta[property="og:image"]').forEach((m) => {
+            const c = (m as HTMLMetaElement).content;
+            if (c && !images.includes(c)) images.push(c);
+          });
+          if (images.length === 0) {
+            document.querySelectorAll('img[src*="media-photos.depop.com"]').forEach((im) => {
+              const s = im.getAttribute('src');
+              if (s && !images.includes(s)) images.push(s);
+            });
+          }
 
-      // Call extended API for seller/shipping details
-      const extended: any = await page.evaluate(async (url: string) => {
-        try {
-          const res = await fetch(url);
-          if (res.ok) return await res.json();
-          return null;
-        } catch { return null; }
-      }, `${EXTENDED_API}${slug}/extended/?lang=en&force_fee_calculation=true`);
+          let description = meta('meta[name="description"]') || meta('meta[property="og:description"]');
 
-      // Extract seller username from meta description ("... - Sold by @username")
-      const seller: string | undefined = await page.evaluate(`
-        (() => {
-          const meta = document.querySelector('meta[name="description"]');
-          const content = meta ? meta.getAttribute('content') || '' : '';
-          const match = content.match(/Sold by @(\\w+)/);
-          return match ? match[1] : undefined;
-        })()
-      `) as string | undefined;
+          // JSON-LD Product schema, if present, is the richest source.
+          let seller: string | undefined;
+          document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
+            try {
+              const j = JSON.parse(s.textContent || '');
+              const node = Array.isArray(j) ? j.find((x) => x['@type'] === 'Product') : j;
+              if (node && node['@type'] === 'Product') {
+                if (node.description) description = node.description;
+                if (node.brand?.name) seller = node.brand.name;
+              }
+            } catch { /* ignore */ }
+          });
 
-      const images: string[] = jsonLd?.image || [];
-      const hasShipping = extended?.pricing?.national_shipping_cost != null
-        || extended?.has_free_shipping === true;
+          return { description, images, seller };
+        });
 
-      return {
-        id: slug,
-        description: jsonLd?.description ?? undefined,
-        images,
-        seller,
-        isShippingOffered: hasShipping,
-        url: `${PRODUCT_URL}${slug}`,
-      };
-    } finally {
-      if (page) await page.close().catch(() => {});
-    }
+        return {
+          id: slug,
+          description: data.description,
+          images: data.images,
+          seller: data.seller ?? slug.split('-')[0],
+          isShippingOffered: true,
+          url: `${PRODUCT_URL}${slug}`,
+        };
+      } finally {
+        if (page) await page.close().catch(() => {});
+      }
+    });
   }
 
   async healthCheck(): Promise<boolean> {
@@ -193,10 +210,10 @@ export class DepopMarketplace extends BaseMarketplace {
   private humanizeSlug(slug: string): string {
     const parts = slug.split('-');
     if (parts.length <= 2) return slug.replace(/-/g, ' ');
-    // Remove first part (username) and last part (random suffix)
+    // Drop the leading username and the trailing random suffix.
     const titleParts = parts.slice(1, -1);
     return titleParts
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   }
 }

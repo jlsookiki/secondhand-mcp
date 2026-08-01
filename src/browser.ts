@@ -90,6 +90,33 @@ export async function closeBrowser(): Promise<void> {
   }
 }
 
+/**
+ * Restart the browser. This build has no residential proxy (it runs from the
+ * user's own machine), so rotation is just a fresh browser to clear transient
+ * state between retries.
+ */
+export async function rotateBrowser(): Promise<void> {
+  await closeBrowser();
+}
+
+/**
+ * Serialize browser-based scrapes. The browser is a process-wide singleton and
+ * rotateBrowser() closes it — so if two scrapes ran concurrently, one restarting
+ * would yank the browser out from under the other. All scrapes run through this.
+ */
+let browserLock: Promise<void> = Promise.resolve();
+export async function withBrowserLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = browserLock;
+  let release!: () => void;
+  browserLock = new Promise<void>((r) => { release = r; });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 // Clean shutdown
 process.on('exit', () => {
   if (browser) {
