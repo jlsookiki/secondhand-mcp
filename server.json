@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.jlsookiki/secondhand-mcp",
-  "description": "Search Facebook Marketplace, eBay, Depop, and Poshmark for secondhand items with price, condition, category, size, and color filters, full listing details with photos, and deep-research search/fetch tools.",
+  "description": "Search Facebook Marketplace, eBay, Depop, and Poshmark from AI — filters, photos, full listings.",
   "repository": {
     "url": "https://github.com/jlsookiki/secondhand-mcp",
     "source": "github"
