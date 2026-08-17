@@ -180,6 +180,15 @@ Get full details for a specific listing using an ID from search results.
 
 List all enabled marketplaces and their status.
 
+### `search` / `fetch` (deep research)
+
+Convenience pair following the [ChatGPT Deep Research tool contract](https://developers.openai.com/api/docs/guides/deep-research) — exact names, a single string argument each:
+
+- `search(query)` — searches every enabled marketplace at once and returns `{ results: [{ id, title, text, url }] }`, where `id` is `marketplace:listingId`
+- `fetch(id)` — returns full listing details for a `search` result ID as `{ id, title, text, url, metadata }`
+
+Useful for research-style clients that expect these standard tool names; for filtered searches use `search_marketplace`.
+
 ## How It Works
 
 **Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates. No login or browser needed.

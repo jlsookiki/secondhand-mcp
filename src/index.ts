@@ -182,6 +182,38 @@ const tools: Tool[] = [
       type: 'object',
       properties: {}
     }
+  },
+  // `search` and `fetch` follow the ChatGPT Deep Research tool contract:
+  // exact names, a single string argument each, JSON result shapes
+  // { results: [{ id, title, text, url }] } and { id, title, text, url, metadata }.
+  // https://developers.openai.com/api/docs/guides/deep-research
+  {
+    name: 'search',
+    description: 'Search all available secondhand marketplaces at once (deep research). Returns results whose IDs (marketplace:listingId) can be passed to the fetch tool for full listing details.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query string'
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'fetch',
+    description: 'Fetch full listing details for a result ID returned by the search tool. ID format: marketplace:listingId (e.g., "facebook:12345" or "ebay:v1|123|456").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Result ID from the search tool (format: marketplace:listingId)'
+        }
+      },
+      required: ['id']
+    }
   }
 ];
 
@@ -461,12 +493,105 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: 'text',
-            text: `Available Marketplaces:\n\n${info.map(m => 
+            text: `Available Marketplaces:\n\n${info.map(m =>
               `• ${m.displayName} (${m.name}) - ${m.requiresAuth ? 'Requires auth' : 'No auth required'}`
             ).join('\n')}`
           }
         ]
       };
+    }
+
+    case 'search': {
+      const { query } = args as { query: string };
+      if (!query) {
+        return {
+          content: [{ type: 'text', text: 'Missing required parameter: query' }],
+          isError: true,
+        };
+      }
+
+      const searchParams: SearchParams = { query, location: 'san francisco' };
+      const results: Array<{ id: string; title: string; text: string; url: string }> = [];
+      const errors: string[] = [];
+
+      const settled = await Promise.allSettled(
+        getAllMarketplaces().map(mp => mp.search(searchParams))
+      );
+      for (const outcome of settled) {
+        if (outcome.status === 'fulfilled') {
+          for (const listing of outcome.value.listings) {
+            const parts = [listing.price];
+            if (listing.condition) parts.push(listing.condition);
+            if (listing.location) parts.push(listing.location);
+            parts.push(`on ${listing.marketplace}`);
+            if (listing.description) parts.push(listing.description);
+            results.push({
+              id: `${outcome.value.marketplace}:${listing.id}`,
+              title: listing.title,
+              text: parts.join(' · '),
+              url: listing.url,
+            });
+          }
+        } else {
+          errors.push(String(outcome.reason));
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(errors.length ? { results, errors } : { results })
+        }]
+      };
+    }
+
+    case 'fetch': {
+      const { id } = args as { id: string };
+      const colonIdx = id ? id.indexOf(':') : -1;
+      if (colonIdx === -1) {
+        return {
+          content: [{ type: 'text', text: 'id must be in format marketplace:listingId' }],
+          isError: true,
+        };
+      }
+
+      const marketplaceName = id.slice(0, colonIdx);
+      const listingId = id.slice(colonIdx + 1);
+      const mp = getMarketplace(marketplaceName) as { getListingDetails?: (id: string) => Promise<ListingDetails> } | undefined;
+      if (!mp?.getListingDetails) {
+        return {
+          content: [{ type: 'text', text: `Unknown marketplace or listing details unsupported: ${marketplaceName}. Available: ${listMarketplaceNames().join(', ')}` }],
+          isError: true,
+        };
+      }
+
+      try {
+        const details = await mp.getListingDetails(listingId);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              id,
+              title: details.description?.split('\n')[0]?.slice(0, 120) || `Listing ${listingId} on ${marketplaceName}`,
+              text: details.description || '',
+              url: details.url,
+              metadata: {
+                marketplace: marketplaceName,
+                location: details.location,
+                seller: details.seller,
+                images: details.images,
+                deliveryTypes: details.deliveryTypes,
+                isShippingOffered: details.isShippingOffered,
+              },
+            })
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text', text: `Error fetching listing details: ${error}` }],
+          isError: true,
+        };
+      }
     }
 
     default:
