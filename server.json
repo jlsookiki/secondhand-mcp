@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.jlsookiki/secondhand-mcp",
+  "description": "Search Facebook Marketplace, eBay, Depop, and Poshmark from AI — filters, photos, full listings.",
+  "repository": {
+    "url": "https://github.com/jlsookiki/secondhand-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://secondhandmcp.com",
+  "version": "0.5.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "secondhand-mcp",
+      "version": "0.5.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "EBAY_CLIENT_ID",
+          "description": "eBay API client ID (only needed for eBay search)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "EBAY_CLIENT_SECRET",
+          "description": "eBay API client secret (only needed for eBay search)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "EBAY_MARKETPLACE_ID",
+          "description": "eBay regional marketplace, e.g. EBAY_US (default)",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
