@@ -5,10 +5,20 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, and Poshmark for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
 
-Works with Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
+Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP servers locally.
 
 > [!TIP]
-> **Want to skip the setup?** Try [Secondhand MCP Cloud](https://secondhandmcp.com) — the hosted version that connects to Claude.ai and ChatGPT in 30 seconds. No install or Chrome required. Free tier included.
+> **Using ChatGPT? This one won't work there.**
+>
+> It runs on your computer, so it only works where your computer is — Claude Desktop, Claude Code, Cursor. [Secondhand MCP Cloud](https://secondhandmcp.com) is the same search, always on, so whichever assistant you actually use can reach it. Free tier, no card.
+
+| | This repo | [Cloud](https://secondhandmcp.com) |
+|---|---|---|
+| Claude Desktop, Code, Cursor | ✅ | ✅ |
+| ChatGPT, Claude, and other assistants | — | ✅ |
+| Searching from your phone | — | ✅ |
+| Chrome running in the background | needed | not needed |
+| Price | free, forever | free tier, then $4.99 |
 
 ## Supported Marketplaces
 
