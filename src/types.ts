@@ -24,6 +24,8 @@ export interface SearchParams {
   maxPrice?: number;
   minPrice?: number;
   radius?: number; // in miles
+  maxPages?: number; // bounded pagination for marketplaces that support cursors
+  pageDelayMs?: number; // delay between paginated requests
   condition?: 'new' | 'like_new' | 'excellent' | 'good' | 'fair' | 'used' | 'any';
   limit?: number;
   offset?: number; // starting result offset for pagination (eBay)

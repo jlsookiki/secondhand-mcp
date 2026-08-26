@@ -43,7 +43,16 @@ export class FacebookMarketplace extends BaseMarketplace {
   private locationCache: Map<string, LocationCoordinates> = new Map();
 
   async search(params: SearchParams): Promise<SearchResult> {
-    const { query, location = 'san francisco', maxPrice, minPrice, limit = 24 } = params;
+    const {
+      query,
+      location = 'san francisco',
+      maxPrice,
+      minPrice,
+      limit = 24,
+      radius,
+      maxPages = 1,
+      pageDelayMs = 500,
+    } = params;
 
     try {
       // Step 1: Resolve location to coordinates
@@ -54,42 +63,69 @@ export class FacebookMarketplace extends BaseMarketplace {
         );
       }
 
-      // Step 2: Search listings
-      const variables = JSON.stringify({
-        count: Math.min(limit, 24),
-        params: {
-          bqf: {
-            callsite: 'COMMERCE_MKTPLACE_WWW',
-            query,
-          },
-          browse_request_params: {
-            commerce_enable_local_pickup: true,
-            commerce_enable_shipping: true,
-            commerce_search_and_rp_available: true,
-            commerce_search_and_rp_condition: null,
-            commerce_search_and_rp_ctime_days: null,
-            filter_location_latitude: coords.latitude,
-            filter_location_longitude: coords.longitude,
-            filter_price_lower_bound: minPrice ?? 0,
-            filter_price_upper_bound: maxPrice ?? MAX_PRICE_SENTINEL,
-            filter_radius_km: 16,
-          },
-          custom_request_params: {
-            surface: 'SEARCH',
-          },
-        },
-      });
+      // Step 2: Search listings. Facebook caps a page at 24 and often returns a
+      // short first page, so follow its opaque cursor when the caller opts in.
+      const resultLimit = Math.max(1, Math.floor(limit));
+      const pageLimit = Math.max(1, Math.floor(maxPages));
+      const delayMs = Math.max(0, Math.floor(pageDelayMs));
+      const radiusKm = radius === undefined ? 16 : Math.max(1, Math.round(radius * 1.609344));
+      const listings: Listing[] = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined;
 
-      const response = await this.fetchGraphQL(SEARCH_DOC_ID, variables);
+      for (let page = 0; page < pageLimit && listings.length < resultLimit; page += 1) {
+        const variables: Record<string, unknown> = {
+          count: Math.min(resultLimit - listings.length, 24),
+          params: {
+            bqf: {
+              callsite: 'COMMERCE_MKTPLACE_WWW',
+              query,
+            },
+            browse_request_params: {
+              commerce_enable_local_pickup: true,
+              commerce_enable_shipping: true,
+              commerce_search_and_rp_available: true,
+              commerce_search_and_rp_condition: null,
+              commerce_search_and_rp_ctime_days: null,
+              filter_location_latitude: coords.latitude,
+              filter_location_longitude: coords.longitude,
+              filter_price_lower_bound: minPrice ?? 0,
+              filter_price_upper_bound: maxPrice ?? MAX_PRICE_SENTINEL,
+              filter_radius_km: radiusKm,
+            },
+            custom_request_params: {
+              surface: 'SEARCH',
+            },
+          },
+        };
+        if (cursor) variables.cursor = cursor;
 
-      if (!response.data?.marketplace_search?.feed_units?.edges) {
-        return this.createError(
-          'Unexpected response structure from Facebook. The GraphQL doc_id may need updating.'
-        );
+        const response = await this.fetchGraphQL(SEARCH_DOC_ID, JSON.stringify(variables));
+        const feed = response.data?.marketplace_search?.feed_units;
+        if (!Array.isArray(feed?.edges)) {
+          return this.createError(
+            'Unexpected response structure from Facebook. The GraphQL doc_id may need updating.'
+          );
+        }
+
+        for (const listing of this.parseListings(feed.edges, resultLimit, params.showSold ?? false)) {
+          if (!seen.has(listing.id)) {
+            seen.add(listing.id);
+            listings.push(listing);
+          }
+          if (listings.length >= resultLimit) break;
+        }
+
+        const pageInfo = feed.page_info;
+        const nextCursor = pageInfo?.end_cursor;
+        if (pageInfo?.has_next_page !== true || typeof nextCursor !== 'string' || !nextCursor) {
+          break;
+        }
+        cursor = nextCursor;
+        if (page + 1 < pageLimit && listings.length < resultLimit && delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
-
-      const edges = response.data.marketplace_search.feed_units.edges;
-      const listings = this.parseListings(edges, limit, params.showSold ?? false);
 
       return {
         marketplace: this.name,

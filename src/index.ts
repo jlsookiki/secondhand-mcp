@@ -81,6 +81,25 @@ const tools: Tool[] = [
           type: 'number',
           description: 'Minimum price filter (optional)'
         },
+        radius: {
+          type: 'number',
+          description: 'Search radius in miles (Facebook; defaults to 10 miles)',
+          minimum: 1
+        },
+        maxPages: {
+          type: 'number',
+          description: 'Maximum result pages to fetch (Facebook; defaults to 1)',
+          minimum: 1,
+          maximum: 10,
+          default: 1
+        },
+        pageDelayMs: {
+          type: 'number',
+          description: 'Delay in milliseconds between paginated requests (Facebook; defaults to 500)',
+          minimum: 0,
+          maximum: 10000,
+          default: 500
+        },
         limit: {
           type: 'number',
           description: 'Maximum number of results to return (default: 20). eBay paginates automatically to fetch more than 200 (eBay caps offset + limit at 10,000).',
@@ -100,6 +119,12 @@ const tools: Tool[] = [
           type: 'boolean',
           description: 'Include full image URLs in results (default: false). Use get_listing_details for full photos.',
           default: false
+        },
+        outputFormat: {
+          type: 'string',
+          enum: ['text', 'json'],
+          description: 'Response format. JSON returns machine-readable listing objects.',
+          default: 'text'
         },
         sort: {
           type: 'string',
@@ -170,6 +195,12 @@ const tools: Tool[] = [
         maxImages: {
           type: 'number',
           description: 'Cap the number of photos returned (default: all). Use to keep the response small for listings with many photos.'
+        },
+        outputFormat: {
+          type: 'string',
+          enum: ['text', 'json'],
+          description: 'Response format. JSON returns machine-readable metadata and photo URLs.',
+          default: 'text'
         }
       },
       required: ['listingId']
@@ -247,10 +278,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         location?: string;
         maxPrice?: number;
         minPrice?: number;
+        radius?: number;
+        maxPages?: number;
+        pageDelayMs?: number;
         limit?: number;
         offset?: number;
         showSold?: boolean;
         includeImages?: boolean;
+        outputFormat?: 'text' | 'json';
         sort?: string;
         condition?: string;
         category?: string;
@@ -265,6 +300,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         location: params.location || 'san francisco',
         maxPrice: params.maxPrice,
         minPrice: params.minPrice,
+        radius: params.radius,
+        maxPages: params.maxPages,
+        pageDelayMs: params.pageDelayMs,
         limit: params.limit || 20,
         offset: params.offset || 0,
         showSold: params.showSold || false,
@@ -300,7 +338,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: formatMultipleResults(results, searchParams, params.includeImages || false)
+              text: params.outputFormat === 'json'
+                ? formatResultsJson(results, params.includeImages || false)
+                : formatMultipleResults(results, searchParams, params.includeImages || false)
             }
           ]
         };
@@ -325,7 +365,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: 'text',
-                text: formatSingleResult(result, searchParams, params.includeImages || false)
+                text: params.outputFormat === 'json'
+                  ? formatResultsJson(result, params.includeImages || false)
+                  : formatSingleResult(result, searchParams, params.includeImages || false)
               }
             ]
           };
@@ -344,13 +386,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'get_listing_details': {
-      const { listingId, marketplace: mpName, imageMode, includeImages, imageSize, maxImages } = args as {
+      const { listingId, marketplace: mpName, imageMode, includeImages, imageSize, maxImages, outputFormat } = args as {
         listingId: string;
         marketplace?: string;
         imageMode?: 'urls' | 'inline';
         includeImages?: boolean;
         imageSize?: 'thumb' | 'standard' | 'full';
         maxImages?: number;
+        outputFormat?: 'text' | 'json';
       };
 
       if (!listingId) {
@@ -383,7 +426,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // No photos on the listing — nothing image-specific to do.
         if (total === 0) {
-          return { content: [{ type: 'text', text: formatListingDetails(details) }] };
+          return {
+            content: [{
+              type: 'text',
+              text: outputFormat === 'json' ? JSON.stringify(details) : formatListingDetails(details),
+            }],
+          };
         }
 
         // URL mode defaults to full res (client fetches directly, no payload cost
@@ -393,6 +441,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const urls = details.images
           .slice(0, maxImages ?? total)
           .map((url) => resizeEbayImageUrl(url, sizePx));
+
+        if (outputFormat === 'json') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ ...details, images: urls }),
+            }],
+          };
+        }
 
         const renderUrls = () => {
           const numbered = urls.map((u, i) => `${i + 1}. ${u}`).join('\n');
@@ -640,6 +697,18 @@ function formatSingleResult(result: SearchResult, params: SearchParams, includeI
   }
 
   return lines.join('\n');
+}
+
+function formatResultsJson(result: SearchResult | SearchResult[], includeImages: boolean): string {
+  const stripImages = (item: SearchResult): SearchResult => ({
+    ...item,
+    listings: item.listings.map((listing) => {
+      if (includeImages) return listing;
+      const { images: _images, ...withoutImages } = listing;
+      return withoutImages;
+    }),
+  });
+  return JSON.stringify(Array.isArray(result) ? result.map(stripImages) : stripImages(result));
 }
 
 function formatMultipleResults(results: SearchResult[], params: SearchParams, includeImages: boolean): string {

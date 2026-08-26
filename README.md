@@ -146,8 +146,12 @@ Search for items across marketplaces.
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
 | `limit` | No | `20` | Max results |
+| `radius` | No | `10` | Search radius in miles (Facebook only) |
+| `maxPages` | No | `1` | Maximum cursor-paginated pages, up to 10 (Facebook only) |
+| `pageDelayMs` | No | `500` | Delay between paginated requests, up to 10 seconds (Facebook only) |
 | `showSold` | No | `false` | Include sold items (Facebook only) |
 | `includeImages` | No | `false` | Include image URLs in output |
+| `outputFormat` | No | `text` | `text` for human-readable output or `json` for machine-readable results |
 | `sort` | No | `relevance` | Sort order (Depop, Poshmark): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
 | `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair` |
 | `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
@@ -175,6 +179,7 @@ Get full details for a specific listing using an ID from search results.
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
 | `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, or `poshmark` |
+| `outputFormat` | No | `text` | `text` for human-readable output or `json` for metadata and photo URLs |
 
 **Data returned per marketplace:**
 
@@ -202,7 +207,7 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 ## How It Works
 
-**Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates. No login or browser needed.
+**Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates and supports bounded cursor pagination with configurable request pacing. No login or browser needed.
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed. The target regional marketplace is controlled by `EBAY_MARKETPLACE_ID` (default: `EBAY_US`).
 
