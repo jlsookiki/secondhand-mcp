@@ -7,6 +7,10 @@
  * cities from GeoNames data instead is deterministic, and picking the most
  * populous match is the disambiguation Facebook is missing.
  *
+ * all-the-cities is the only surveyed dataset carrying population, the field
+ * that decides which Austin someone meant. cities.json and country-state-city
+ * hold more cities but no population, so both answer "Austin" with Arkansas.
+ *
  * Data: geonames.org, CC BY 4.0, via the all-the-cities package.
  */
 
