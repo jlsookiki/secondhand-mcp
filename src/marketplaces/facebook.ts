@@ -19,6 +19,65 @@ const SEARCH_DOC_ID = '7111939778879383';
 const DETAIL_PHOTOS_DOC_ID = '10059604367394414';
 const DETAIL_INFO_DOC_ID = '26090240497332612';
 
+const MAX_ATTEMPTS = 3;
+const ATTEMPT_TIMEOUT_MS = 8000;
+const TOTAL_BUDGET_MS = 15000;
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const SEARCH_CACHE_TTL_MS = 90_000;
+const SEARCH_CACHE_MAX = 200;
+
+/** Facebook's own search mishandles common shorthand: "nyc" returns a town in
+ *  Ukraine and "austin" returns a Chicago neighborhood. */
+const SEED_LOCATIONS: Record<string, LocationCoordinates> = {
+  'san francisco': { latitude: 37.7749, longitude: -122.4194, name: 'San Francisco, CA' },
+  'sf': { latitude: 37.7749, longitude: -122.4194, name: 'San Francisco, CA' },
+  'new york': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
+  'new york city': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
+  'nyc': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
+  'los angeles': { latitude: 34.0522, longitude: -118.2437, name: 'Los Angeles, CA' },
+  'la': { latitude: 34.0522, longitude: -118.2437, name: 'Los Angeles, CA' },
+  'chicago': { latitude: 41.8781, longitude: -87.6298, name: 'Chicago, IL' },
+  'houston': { latitude: 29.7604, longitude: -95.3698, name: 'Houston, TX' },
+  'phoenix': { latitude: 33.4484, longitude: -112.074, name: 'Phoenix, AZ' },
+  'philadelphia': { latitude: 39.9526, longitude: -75.1652, name: 'Philadelphia, PA' },
+  'san antonio': { latitude: 29.4241, longitude: -98.4936, name: 'San Antonio, TX' },
+  'san diego': { latitude: 32.7157, longitude: -117.1611, name: 'San Diego, CA' },
+  'dallas': { latitude: 32.7767, longitude: -96.797, name: 'Dallas, TX' },
+  'austin': { latitude: 30.2672, longitude: -97.7431, name: 'Austin, TX' },
+  'seattle': { latitude: 47.6062, longitude: -122.3321, name: 'Seattle, WA' },
+  'denver': { latitude: 39.7392, longitude: -104.9903, name: 'Denver, CO' },
+  'boston': { latitude: 42.3601, longitude: -71.0589, name: 'Boston, MA' },
+  'miami': { latitude: 25.7617, longitude: -80.1918, name: 'Miami, FL' },
+  'atlanta': { latitude: 33.749, longitude: -84.388, name: 'Atlanta, GA' },
+  'portland': { latitude: 45.5152, longitude: -122.6784, name: 'Portland, OR' },
+  'las vegas': { latitude: 36.1699, longitude: -115.1398, name: 'Las Vegas, NV' },
+  'detroit': { latitude: 42.3314, longitude: -83.0458, name: 'Detroit, MI' },
+  'minneapolis': { latitude: 44.9778, longitude: -93.265, name: 'Minneapolis, MN' },
+  'washington': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
+  'washington dc': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
+  'dc': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
+  'nashville': { latitude: 36.1627, longitude: -86.7816, name: 'Nashville, TN' },
+  'charlotte': { latitude: 35.2271, longitude: -80.8431, name: 'Charlotte, NC' },
+  'sacramento': { latitude: 38.5816, longitude: -121.4944, name: 'Sacramento, CA' },
+  'oakland': { latitude: 37.8044, longitude: -122.2712, name: 'Oakland, CA' },
+  'san jose': { latitude: 37.3382, longitude: -121.8863, name: 'San Jose, CA' },
+  'brooklyn': { latitude: 40.6782, longitude: -73.9442, name: 'Brooklyn, NY' },
+};
+
+const US_STATES: Record<string, string> = {
+  al: 'alabama', ak: 'alaska', az: 'arizona', ar: 'arkansas', ca: 'california',
+  co: 'colorado', ct: 'connecticut', de: 'delaware', fl: 'florida', ga: 'georgia',
+  hi: 'hawaii', id: 'idaho', il: 'illinois', in: 'indiana', ia: 'iowa',
+  ks: 'kansas', ky: 'kentucky', la: 'louisiana', me: 'maine', md: 'maryland',
+  ma: 'massachusetts', mi: 'michigan', mn: 'minnesota', ms: 'mississippi',
+  mo: 'missouri', mt: 'montana', ne: 'nebraska', nv: 'nevada', nh: 'new hampshire',
+  nj: 'new jersey', nm: 'new mexico', ny: 'new york', nc: 'north carolina',
+  nd: 'north dakota', oh: 'ohio', ok: 'oklahoma', or: 'oregon', pa: 'pennsylvania',
+  ri: 'rhode island', sc: 'south carolina', sd: 'south dakota', tn: 'tennessee',
+  tx: 'texas', ut: 'utah', vt: 'vermont', va: 'virginia', wa: 'washington',
+  wv: 'west virginia', wi: 'wisconsin', wy: 'wyoming', dc: 'district of columbia',
+};
+
 const GRAPHQL_HEADERS: Record<string, string> = {
   'content-type': 'application/x-www-form-urlencoded',
   'sec-fetch-site': 'same-origin',
@@ -41,9 +100,16 @@ export class FacebookMarketplace extends BaseMarketplace {
 
   // Cache location lookups to avoid repeat requests for the same city
   private locationCache: Map<string, LocationCoordinates> = new Map();
+  private searchCache: Map<string, { at: number; result: SearchResult }> = new Map();
 
   async search(params: SearchParams): Promise<SearchResult> {
     const { query, location = 'san francisco', maxPrice, minPrice, limit = 24 } = params;
+
+    const cacheKey = JSON.stringify([query, location, maxPrice, minPrice, limit, params.showSold]);
+    const hit = this.searchCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < SEARCH_CACHE_TTL_MS) {
+      return hit.result;
+    }
 
     try {
       // Step 1: Resolve location to coordinates
@@ -91,12 +157,20 @@ export class FacebookMarketplace extends BaseMarketplace {
       const edges = response.data.marketplace_search.feed_units.edges;
       const listings = this.parseListings(edges, limit, params.showSold ?? false);
 
-      return {
+      const result: SearchResult = {
         marketplace: this.name,
         success: true,
         listings,
         totalFound: listings.length,
       };
+
+      this.searchCache.set(cacheKey, { at: Date.now(), result });
+      if (this.searchCache.size > SEARCH_CACHE_MAX) {
+        const oldest = this.searchCache.keys().next().value;
+        if (oldest !== undefined) this.searchCache.delete(oldest);
+      }
+
+      return result;
     } catch (error) {
       return this.createError(`Facebook Marketplace search failed: ${error}`);
     }
@@ -169,8 +243,45 @@ export class FacebookMarketplace extends BaseMarketplace {
 
   // ── Private helpers ──────────────────────────────────────────────
 
+  /**
+   * Facebook's city search is literal, and a "City, ST" query does not just
+   * miss — "kansas city, mo" returns Mound City, Kansas. Spelling the state
+   * out is the only form that reliably lands, so it goes first; the bare
+   * city name is a last resort because "austin" is Austin, Illinois.
+   */
+  private locationCandidates(query: string): string[] {
+    const base = query.toLowerCase().trim();
+    const out: string[] = [];
+
+    const match = base.match(/^(.+?),?\s+([a-z]{2})$/);
+    const state = match && US_STATES[match[2]];
+    if (match && state) out.push(`${match[1].trim()} ${state}`);
+
+    if (!out.includes(base)) out.push(base);
+
+    const bareCity = base.split(',')[0].trim();
+    if (bareCity && !out.includes(bareCity)) out.push(bareCity);
+
+    return out;
+  }
+
   private async resolveLocation(query: string): Promise<LocationCoordinates | null> {
-    const cacheKey = query.toLowerCase().trim();
+    const primaryKey = query.toLowerCase().trim();
+
+    for (const candidate of this.locationCandidates(query)) {
+      const coords = await this.resolveLocationExact(candidate);
+      if (coords) {
+        if (candidate !== primaryKey) this.locationCache.set(primaryKey, coords);
+        return coords;
+      }
+    }
+    return null;
+  }
+
+  private async resolveLocationExact(cacheKey: string): Promise<LocationCoordinates | null> {
+    if (SEED_LOCATIONS[cacheKey]) {
+      return SEED_LOCATIONS[cacheKey];
+    }
 
     if (this.locationCache.has(cacheKey)) {
       return this.locationCache.get(cacheKey)!;
@@ -273,24 +384,48 @@ export class FacebookMarketplace extends BaseMarketplace {
       doc_id: docId,
     });
 
-    const response = await fetch(GRAPHQL_URL, {
-      method: 'POST',
-      headers: GRAPHQL_HEADERS,
-      body: body.toString(),
-      // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
-      dispatcher: proxyAgent,
-    });
+    const deadline = Date.now() + TOTAL_BUDGET_MS;
+    let lastError: Error | undefined;
 
-    if (!response.ok) {
-      throw new Error(`Facebook API returned status ${response.status}`);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(GRAPHQL_URL, {
+          method: 'POST',
+          headers: GRAPHQL_HEADERS,
+          body: body.toString(),
+          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+          // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
+          dispatcher: proxyAgent,
+        });
+
+        if (RETRYABLE_STATUS.has(response.status)) {
+          throw new Error(`Facebook API returned status ${response.status}`);
+        }
+        if (!response.ok) {
+          throw Object.assign(new Error(`Facebook API returned status ${response.status}`), {
+            fatal: true,
+          });
+        }
+
+        const json = (await response.json()) as any;
+
+        if (json.errors?.length) {
+          throw Object.assign(new Error(`Facebook GraphQL error: ${json.errors[0].message}`), {
+            fatal: true,
+          });
+        }
+
+        return json;
+      } catch (err: any) {
+        if (err?.fatal) throw err;
+        lastError = err;
+
+        const backoff = 1000 * 2 ** (attempt - 1) * (0.5 + Math.random());
+        if (attempt === MAX_ATTEMPTS || Date.now() + backoff >= deadline) break;
+        await new Promise((r) => setTimeout(r, backoff));
+      }
     }
 
-    const json = (await response.json()) as any;
-
-    if (json.errors?.length) {
-      throw new Error(`Facebook GraphQL error: ${json.errors[0].message}`);
-    }
-
-    return json;
+    throw lastError ?? new Error('Facebook request failed');
   }
 }

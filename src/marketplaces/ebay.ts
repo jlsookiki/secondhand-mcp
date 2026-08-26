@@ -176,6 +176,9 @@ export class EbayMarketplace extends BaseMarketplace {
   async getListingDetails(itemId: string): Promise<ListingDetails> {
     const token = await this.getToken();
 
+    // Listing URLs show a bare number; the Browse API wants "v1|123456|0".
+    if (/^\d+$/.test(itemId)) itemId = `v1|${itemId}|0`;
+
     const response = await fetch(`${BROWSE_API_URL}/item/${encodeURIComponent(itemId)}`, {
       headers: {
         Authorization: `Bearer ${token}`,
