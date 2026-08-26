@@ -10,6 +10,7 @@
 
 import { ProxyAgent } from 'undici';
 import { BaseMarketplace } from './base.js';
+import { lookupUsCity } from './us-cities.js';
 import { SearchParams, SearchResult, Listing, ListingDetails, LocationCoordinates } from '../types.js';
 
 // GraphQL endpoint and operation identifiers
@@ -26,57 +27,7 @@ const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const SEARCH_CACHE_TTL_MS = 90_000;
 const SEARCH_CACHE_MAX = 200;
 
-/** Facebook's own search mishandles common shorthand: "nyc" returns a town in
- *  Ukraine and "austin" returns a Chicago neighborhood. */
-const SEED_LOCATIONS: Record<string, LocationCoordinates> = {
-  'san francisco': { latitude: 37.7749, longitude: -122.4194, name: 'San Francisco, CA' },
-  'sf': { latitude: 37.7749, longitude: -122.4194, name: 'San Francisco, CA' },
-  'new york': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
-  'new york city': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
-  'nyc': { latitude: 40.7128, longitude: -74.006, name: 'New York, NY' },
-  'los angeles': { latitude: 34.0522, longitude: -118.2437, name: 'Los Angeles, CA' },
-  'la': { latitude: 34.0522, longitude: -118.2437, name: 'Los Angeles, CA' },
-  'chicago': { latitude: 41.8781, longitude: -87.6298, name: 'Chicago, IL' },
-  'houston': { latitude: 29.7604, longitude: -95.3698, name: 'Houston, TX' },
-  'phoenix': { latitude: 33.4484, longitude: -112.074, name: 'Phoenix, AZ' },
-  'philadelphia': { latitude: 39.9526, longitude: -75.1652, name: 'Philadelphia, PA' },
-  'san antonio': { latitude: 29.4241, longitude: -98.4936, name: 'San Antonio, TX' },
-  'san diego': { latitude: 32.7157, longitude: -117.1611, name: 'San Diego, CA' },
-  'dallas': { latitude: 32.7767, longitude: -96.797, name: 'Dallas, TX' },
-  'austin': { latitude: 30.2672, longitude: -97.7431, name: 'Austin, TX' },
-  'seattle': { latitude: 47.6062, longitude: -122.3321, name: 'Seattle, WA' },
-  'denver': { latitude: 39.7392, longitude: -104.9903, name: 'Denver, CO' },
-  'boston': { latitude: 42.3601, longitude: -71.0589, name: 'Boston, MA' },
-  'miami': { latitude: 25.7617, longitude: -80.1918, name: 'Miami, FL' },
-  'atlanta': { latitude: 33.749, longitude: -84.388, name: 'Atlanta, GA' },
-  'portland': { latitude: 45.5152, longitude: -122.6784, name: 'Portland, OR' },
-  'las vegas': { latitude: 36.1699, longitude: -115.1398, name: 'Las Vegas, NV' },
-  'detroit': { latitude: 42.3314, longitude: -83.0458, name: 'Detroit, MI' },
-  'minneapolis': { latitude: 44.9778, longitude: -93.265, name: 'Minneapolis, MN' },
-  'washington': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
-  'washington dc': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
-  'dc': { latitude: 38.9072, longitude: -77.0369, name: 'Washington, DC' },
-  'nashville': { latitude: 36.1627, longitude: -86.7816, name: 'Nashville, TN' },
-  'charlotte': { latitude: 35.2271, longitude: -80.8431, name: 'Charlotte, NC' },
-  'sacramento': { latitude: 38.5816, longitude: -121.4944, name: 'Sacramento, CA' },
-  'oakland': { latitude: 37.8044, longitude: -122.2712, name: 'Oakland, CA' },
-  'san jose': { latitude: 37.3382, longitude: -121.8863, name: 'San Jose, CA' },
-  'brooklyn': { latitude: 40.6782, longitude: -73.9442, name: 'Brooklyn, NY' },
-};
 
-const US_STATES: Record<string, string> = {
-  al: 'alabama', ak: 'alaska', az: 'arizona', ar: 'arkansas', ca: 'california',
-  co: 'colorado', ct: 'connecticut', de: 'delaware', fl: 'florida', ga: 'georgia',
-  hi: 'hawaii', id: 'idaho', il: 'illinois', in: 'indiana', ia: 'iowa',
-  ks: 'kansas', ky: 'kentucky', la: 'louisiana', me: 'maine', md: 'maryland',
-  ma: 'massachusetts', mi: 'michigan', mn: 'minnesota', ms: 'mississippi',
-  mo: 'missouri', mt: 'montana', ne: 'nebraska', nv: 'nevada', nh: 'new hampshire',
-  nj: 'new jersey', nm: 'new mexico', ny: 'new york', nc: 'north carolina',
-  nd: 'north dakota', oh: 'ohio', ok: 'oklahoma', or: 'oregon', pa: 'pennsylvania',
-  ri: 'rhode island', sc: 'south carolina', sd: 'south dakota', tn: 'tennessee',
-  tx: 'texas', ut: 'utah', vt: 'vermont', va: 'virginia', wa: 'washington',
-  wv: 'west virginia', wi: 'wisconsin', wy: 'wyoming', dc: 'district of columbia',
-};
 
 const GRAPHQL_HEADERS: Record<string, string> = {
   'content-type': 'application/x-www-form-urlencoded',
@@ -253,10 +204,6 @@ export class FacebookMarketplace extends BaseMarketplace {
     const base = query.toLowerCase().trim();
     const out: string[] = [];
 
-    const match = base.match(/^(.+?),?\s+([a-z]{2})$/);
-    const state = match && US_STATES[match[2]];
-    if (match && state) out.push(`${match[1].trim()} ${state}`);
-
     if (!out.includes(base)) out.push(base);
 
     const bareCity = base.split(',')[0].trim();
@@ -266,6 +213,9 @@ export class FacebookMarketplace extends BaseMarketplace {
   }
 
   private async resolveLocation(query: string): Promise<LocationCoordinates | null> {
+    const local = lookupUsCity(query);
+    if (local) return local;
+
     const primaryKey = query.toLowerCase().trim();
 
     for (const candidate of this.locationCandidates(query)) {
@@ -279,10 +229,6 @@ export class FacebookMarketplace extends BaseMarketplace {
   }
 
   private async resolveLocationExact(cacheKey: string): Promise<LocationCoordinates | null> {
-    if (SEED_LOCATIONS[cacheKey]) {
-      return SEED_LOCATIONS[cacheKey];
-    }
-
     if (this.locationCache.has(cacheKey)) {
       return this.locationCache.get(cacheKey)!;
     }
@@ -303,7 +249,13 @@ export class FacebookMarketplace extends BaseMarketplace {
         return null;
       }
 
-      const node = edges[0].node;
+      // Results are ranked by check-ins, so "phoenix" leads with a venue in
+      // South Africa and "sacramento" with a street in Portugal. Only real
+      // places carry the bare "City" subtitle.
+      const cityEdge = edges.find(
+        (e: any) => e.node?.subtitle?.split(' \u00b7')[0] === 'City',
+      );
+      const node = (cityEdge ?? edges[0]).node;
       const name =
         node.subtitle?.split(' \u00b7')[0] === 'City'
           ? node.single_line_address
