@@ -507,6 +507,26 @@ describe('EbayMarketplace.search failures', () => {
     expect(result.error).toMatch(/^eBay search failed:/);
   });
 
+  it('skips an unparseable item instead of failing the whole search', async () => {
+    // A numeric imageUrl reaches the URL rewriter and throws there.
+    install({
+      search: () =>
+        json({
+          total: 3,
+          itemSummaries: [
+            { itemId: 'v1|1|0', title: 'Good', price: { value: '10.00', currency: 'USD' } },
+            { itemId: 'v1|2|0', title: 'Bad', image: { imageUrl: 12345 } },
+            { itemId: 'v1|3|0', title: 'Also good', price: { value: '20.00', currency: 'USD' } },
+          ],
+        }),
+    });
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['v1|1|0', 'v1|3|0']);
+  });
+
   it('does not fabricate listings when itemSummaries is not an array', async () => {
     install({ search: () => json({ total: 5, itemSummaries: 'nope' }) });
 

@@ -895,3 +895,184 @@ describe('Depop listing details', () => {
     ]);
   });
 });
+
+describe('Depop navigation edge cases', () => {
+  it('counts a navigation with no response object as a blocked attempt', async () => {
+    const page = fakePage();
+    vi.mocked(page.goto).mockResolvedValue(null as never);
+    use(page);
+    const result = await new DepopMarketplace().search({ query: 'x' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('status=0');
+    expect(newPage).toHaveBeenCalledTimes(8);
+  });
+
+  it('stringifies a rejection that carries no message', async () => {
+    vi.mocked(newPage).mockRejectedValue('proxy exploded');
+    const result = await new DepopMarketplace().search({ query: 'x' });
+    expect(result.error).toBe(
+      'Depop search failed: Error: All 8 proxy attempts failed. Last: proxy exploded',
+    );
+  });
+});
+
+describe('Depop listing extraction fallbacks', () => {
+  it('skips an anchor with no href and still returns the real tile', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      {
+        roots: [
+          el('li', {}, '£5').append(el('a[href*="/products/"]')),
+          depopTile('/products/u-blue-coat/', { text: '£10' }),
+        ],
+      },
+    );
+    expect(result.listings.map((l) => l.id)).toEqual(['u-blue-coat']);
+  });
+
+  it('handles an anchor with no surrounding card', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      { roots: [el('a[href*="/products/"]', { href: '/products/u-lone-tee/' })] },
+    );
+    expect(result.listings[0]).toMatchObject({
+      id: 'u-lone-tee',
+      title: 'Lone Tee',
+      price: 'Price not listed',
+    });
+    expect(result.listings[0].images).toBeUndefined();
+  });
+
+  it('reads the price and image off the parent element when the card is not a list item', async () => {
+    const a = el('a[href*="/products/"]', { href: '/products/u-grey-hoodie/' });
+    const sibling = el('img', { src: 'https://media-photos.depop.com/side.jpg' });
+    const { result } = await depopSearch(
+      { query: 'x' },
+      { roots: [el('div', {}, '£18').append(a, sibling)] },
+    );
+    expect(result.listings[0]).toMatchObject({
+      price: '£18',
+      priceNumeric: 18,
+      images: ['https://media-photos.depop.com/side.jpg'],
+    });
+  });
+
+  it('falls back to the image alt text for the title when there is no aria-label', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      {
+        roots: [
+          depopTile('/products/sneakerplug-nike-airmax90white/', {
+            alt: 'Nike Air Max 90 White',
+            text: '£120',
+          }),
+        ],
+      },
+    );
+    expect(result.listings[0].title).toBe('Nike Air Max 90 White');
+  });
+});
+
+describe('Depop slug titles', () => {
+  it('drops a trailing hex id from the title', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      { roots: [depopTile(`/products/thriftstore-vintage-nike-jacket-${HEX}/`, { text: '£45' })] },
+    );
+    expect(result.listings[0].title).toBe('Vintage Nike Jacket');
+    expect(result.listings[0].id).toBe(`thriftstore-vintage-nike-jacket-${HEX}`);
+  });
+
+  it('drops a trailing numeric id from the title', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      { roots: [depopTile('/products/thriftstore-red-silk-dress-4820913/', { text: '£45' })] },
+    );
+    expect(result.listings[0].title).toBe('Red Silk Dress');
+  });
+
+  it('keeps a short trailing number that is not an id', async () => {
+    const { result } = await depopSearch(
+      { query: 'x' },
+      { roots: [depopTile('/products/thriftstore-air-max-90/', { text: '£45' })] },
+    );
+    expect(result.listings[0].title).toBe('Air Max 90');
+  });
+});
+
+describe('Depop listing details fallbacks', () => {
+  const slug = 'thriftstore-vintage-nike-jacket';
+
+  it('ignores a JSON-LD block that is not a Product', async () => {
+    use(
+      fakePage({
+        roots: [
+          el('meta[name="description"]', { content: 'meta blurb' }),
+          el(
+            'script[type="application/ld+json"]',
+            {},
+            JSON.stringify({ '@type': 'WebSite', description: 'site blurb', brand: { name: 'Depop' } }),
+          ),
+        ],
+      }),
+    );
+    const details = await new DepopMarketplace().getListingDetails(slug);
+    expect(details.description).toBe('meta blurb');
+    expect(details.seller).toBe('thriftstore');
+  });
+
+  it('ignores an empty JSON-LD block', async () => {
+    use(
+      fakePage({
+        roots: [
+          el('meta[name="description"]', { content: 'meta blurb' }),
+          el('script[type="application/ld+json"]'),
+        ],
+      }),
+    );
+    const details = await new DepopMarketplace().getListingDetails(slug);
+    expect(details.description).toBe('meta blurb');
+  });
+
+  it('keeps the slug username as the seller for a Product with no brand', async () => {
+    use(
+      fakePage({
+        roots: [
+          el('meta[name="description"]', { content: 'meta blurb' }),
+          el(
+            'script[type="application/ld+json"]',
+            {},
+            JSON.stringify({ '@type': 'Product', description: 'ld blurb' }),
+          ),
+        ],
+      }),
+    );
+    const details = await new DepopMarketplace().getListingDetails(slug);
+    expect(details.description).toBe('ld blurb');
+    expect(details.seller).toBe('thriftstore');
+  });
+
+  it('propagates a navigation failure instead of returning details', async () => {
+    vi.mocked(newPage).mockRejectedValue(new Error('Navigation timeout'));
+    await expect(new DepopMarketplace().getListingDetails(slug)).rejects.toThrow(
+      'All 8 proxy attempts failed. Last: Navigation timeout',
+    );
+  });
+});
+
+describe('Depop health check', () => {
+  it('is healthy when a one-result search succeeds', async () => {
+    use(fakePage({ roots: [depopTile('/products/u-blue-coat/', { text: '£10' })] }));
+    await expect(new DepopMarketplace().healthCheck()).resolves.toBe(true);
+  });
+
+  it('is unhealthy when the search reports a failure', async () => {
+    vi.mocked(newPage).mockRejectedValue(new Error('Navigation timeout'));
+    await expect(new DepopMarketplace().healthCheck()).resolves.toBe(false);
+  });
+
+  it('is unhealthy when the browser lock itself throws', async () => {
+    (withBrowserLock as unknown as Mock).mockRejectedValue(new Error('no browser'));
+    await expect(new DepopMarketplace().healthCheck()).resolves.toBe(false);
+  });
+});

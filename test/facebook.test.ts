@@ -546,3 +546,67 @@ describe('search result cache', () => {
     expect(mock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('FacebookMarketplace.healthCheck', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is healthy when a known location resolves', async () => {
+    const { mock } = stubFetch(() => json({}));
+    await expect(new FacebookMarketplace().healthCheck()).resolves.toBe(true);
+    // new york is in the offline table, so health never depends on Facebook.
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('reports unhealthy rather than throwing when lookup blows up', async () => {
+    stubFetch(() => { throw new Error('proxy exploded'); });
+    const fb = new FacebookMarketplace();
+    vi.spyOn(fb as any, 'resolveLocation').mockRejectedValue(new Error('proxy exploded'));
+    await expect(fb.healthCheck()).resolves.toBe(false);
+  });
+
+  it('reports unhealthy when the location cannot be resolved at all', async () => {
+    const fb = new FacebookMarketplace();
+    vi.spyOn(fb as any, 'resolveLocation').mockResolvedValue(null);
+    await expect(fb.healthCheck()).resolves.toBe(false);
+  });
+});
+
+describe('FacebookMarketplace search cache eviction', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('evicts the oldest entry once the cache is full', async () => {
+    stubFetch(() => json(searchBody([item()])));
+    const fb = new FacebookMarketplace();
+    const cache = (fb as any).searchCache as Map<string, unknown>;
+
+    for (let i = 0; i <= 200; i++) {
+      await fb.search({ ...BASE, query: `bike ${i}` });
+    }
+
+    expect(cache.size).toBeLessThanOrEqual(200);
+    expect([...cache.keys()].some((k) => k.includes('"bike 0"'))).toBe(false);
+    expect([...cache.keys()].some((k) => k.includes('"bike 200"'))).toBe(true);
+  });
+});
+
+describe('FacebookMarketplace resilience', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('skips a listing that cannot be parsed instead of failing the search', async () => {
+    // A numeric title survives `|| ''` and then throws on .toUpperCase().
+    const malformed = { id: '2', marketplace_listing_title: 12345 };
+    stubFetch(() => json(searchBody([item(), malformed, item({ id: '3' })])));
+
+    const result = await new FacebookMarketplace().search(BASE);
+
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['1', '3']);
+  });
+
+  it('returns no coordinates when the location lookup itself throws', async () => {
+    stubFetch(() => { throw new Error('socket hung up'); });
+    // Non-US so it does not short-circuit on the offline table.
+    const coords = await new FacebookMarketplace().getLocation('reykjavik iceland');
+    expect(coords).toBeNull();
+  });
+});

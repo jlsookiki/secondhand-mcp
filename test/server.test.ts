@@ -776,3 +776,195 @@ describe('unknown tool', () => {
     expect(textOf(res)).toBe('Unknown tool: teleport');
   });
 });
+
+const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49];
+const GIF_BYTES = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x10, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00];
+const WEBP_BYTES = [
+  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+];
+const RIFF_WAVE_BYTES = [
+  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
+];
+const SHORT_JPEG_BYTES = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00];
+
+const bodyResponse = (bytes: number[], init: ResponseInit = {}) =>
+  new Response(new Uint8Array(bytes), { status: 200, headers: { 'content-type': 'image/png' }, ...init });
+
+const inlineOne = async (bytes: number[], init?: ResponseInit) => {
+  vi.stubGlobal('fetch', vi.fn(async () => bodyResponse(bytes, init)));
+  h.impl.ebay = { details: () => details({ images: ['https://cdn/1.jpg'] }) };
+  return call('get_listing_details', { listingId: '1', marketplace: 'ebay', imageMode: 'inline' });
+};
+
+describe('inline image magic-byte sniffing', () => {
+  it('accepts a PNG body', async () => {
+    const res = await inlineOne(PNG_BYTES);
+    expect(res.content.filter((c) => c.type === 'image')).toEqual([
+      { type: 'image', data: Buffer.from(PNG_BYTES).toString('base64'), mimeType: 'image/png' },
+    ]);
+    expect(textOf(res)).toContain('🖼️ 1 of 1 photo(s) inline (standard)');
+  });
+
+  it('accepts a GIF body', async () => {
+    const res = await inlineOne(GIF_BYTES, { headers: { 'content-type': 'image/gif' } });
+    expect(res.content.filter((c) => c.type === 'image')).toEqual([
+      { type: 'image', data: Buffer.from(GIF_BYTES).toString('base64'), mimeType: 'image/gif' },
+    ]);
+  });
+
+  it('accepts a RIFF container whose form type is WEBP', async () => {
+    const res = await inlineOne(WEBP_BYTES, { headers: { 'content-type': 'image/webp' } });
+    expect(res.content.filter((c) => c.type === 'image')).toEqual([
+      { type: 'image', data: Buffer.from(WEBP_BYTES).toString('base64'), mimeType: 'image/webp' },
+    ]);
+  });
+
+  it('rejects a RIFF container that is not WEBP', async () => {
+    const res = await inlineOne(RIFF_WAVE_BYTES, { headers: { 'content-type': 'image/webp' } });
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(textOf(res)).toContain('⚠️ Server-side image fetch failed for all photos');
+  });
+
+  it('rejects a body one byte short of a PNG signature', async () => {
+    const res = await inlineOne([0x89, 0x50, 0x4e, 0x48, ...PNG_BYTES.slice(4)]);
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(textOf(res)).toContain('⚠️ Server-side image fetch failed for all photos');
+  });
+
+  it('rejects a truncated body even when its first bytes are a valid signature', async () => {
+    expect(SHORT_JPEG_BYTES).toHaveLength(11);
+    const res = await inlineOne(SHORT_JPEG_BYTES, { headers: { 'content-type': 'image/jpeg' } });
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(textOf(res)).toContain('⚠️ Server-side image fetch failed for all photos');
+  });
+
+  it('rejects image bytes served without a content-type', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(PNG_BYTES), { status: 200 })));
+    h.impl.ebay = { details: () => details({ images: ['https://cdn/1.jpg'] }) };
+    const res = await call('get_listing_details', { listingId: '1', marketplace: 'ebay', imageMode: 'inline' });
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(textOf(res)).toContain('⚠️ Server-side image fetch failed for all photos');
+  });
+
+  it('rejects an error response before reading its body', async () => {
+    const res = await inlineOne(PNG_BYTES, { status: 502 });
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(textOf(res)).toContain('⚠️ Server-side image fetch failed for all photos');
+    expect(textOf(res)).toContain('1. https://cdn/1.jpg#800');
+  });
+});
+
+describe('inline image batching', () => {
+  const pngFor = (n: number) => [...PNG_BYTES.slice(0, 12), n];
+
+  it('fetches five at a time and returns the images in listing order', async () => {
+    const urls = Array.from({ length: 7 }, (_, i) => `https://cdn/${i}.jpg`);
+    const seen: string[] = [];
+    let release!: () => void;
+    const firstBatchGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        seen.push(url);
+        if (seen.length <= 5) await firstBatchGate;
+        return bodyResponse(pngFor(urls.indexOf(url.replace('#800', ''))));
+      }),
+    );
+    h.impl.ebay = { details: () => details({ images: urls }) };
+
+    const pending = call('get_listing_details', { listingId: '1', marketplace: 'ebay', imageMode: 'inline' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const midflight = [...seen];
+    release();
+    const res = await pending;
+
+    expect(midflight).toEqual(urls.slice(0, 5).map((u) => `${u}#800`));
+    expect(seen).toHaveLength(7);
+    expect(res.content.filter((c) => c.type === 'image').map((c) => c.data)).toEqual(
+      urls.map((_, i) => Buffer.from(pngFor(i)).toString('base64')),
+    );
+    expect(textOf(res)).toContain('🖼️ 7 of 7 photo(s) inline (standard)');
+  });
+});
+
+describe('single-marketplace result formatting', () => {
+  it('prints no photo line at all for a listing without images', async () => {
+    h.impl.facebook = { search: () => ok('facebook', [listing({ images: undefined })]) };
+    const text = textOf(await call('search_marketplace', { query: 'chair' }));
+    expect(text).toContain('🆔 l1');
+    expect(text).not.toContain('📷');
+    expect(text).not.toContain('🖼️');
+  });
+
+  it('prints no photo line for a listing whose image array is empty', async () => {
+    h.impl.facebook = { search: () => ok('facebook', [listing({ images: [] })]) };
+    const text = textOf(await call('search_marketplace', { query: 'chair' }));
+    expect(text).toContain('🆔 l1');
+    expect(text).not.toContain('📷');
+  });
+
+  it('sorts a listing with no numeric price ahead of every priced one', async () => {
+    h.impl.facebook = {
+      search: () =>
+        ok('facebook', [
+          listing({ id: 'free', title: 'Free', price: 'Free', priceNumeric: undefined }),
+          listing({ id: 'mid', title: 'Mid', priceNumeric: 40 }),
+          listing({ id: 'top', title: 'Top', priceNumeric: 90 }),
+          listing({ id: 'swap', title: 'Swap', price: 'Trade', priceNumeric: undefined }),
+        ]),
+    };
+    const text = textOf(await call('search_marketplace', { query: 'chair' }));
+    const order = ['Free', 'Swap', 'Mid', 'Top'].map((t) => text.indexOf(t));
+    expect(Math.max(order[0], order[1])).toBeLessThan(order[2]);
+    expect(order[2]).toBeLessThan(order[3]);
+    expect(order.every((i) => i >= 0)).toBe(true);
+  });
+});
+
+describe('all-marketplace result formatting', () => {
+  it('pluralises the photo count and omits the line when a listing has none', async () => {
+    h.impl.facebook = {
+      search: () =>
+        ok('facebook', [
+          listing({ id: 'one', title: 'One Pic', priceNumeric: 10, images: ['a'] }),
+          listing({ id: 'two', title: 'Two Pics', priceNumeric: 20, images: ['a', 'b'] }),
+          listing({ id: 'none', title: 'No Pics', priceNumeric: 30 }),
+          listing({ id: 'empty', title: 'Empty Album', priceNumeric: 40, images: [] }),
+        ]),
+    };
+    const text = textOf(await call('search_marketplace', { query: 'chair', marketplace: 'all' }));
+    expect(text).toContain('    📷 1 photo\n    🆔 one');
+    expect(text).toContain('    📷 2 photos\n    🆔 two');
+    expect(text).toContain('No Pics\n    🆔 none');
+    expect(text).toContain('Empty Album\n    🆔 empty');
+    expect(text).not.toContain('🖼️ Images');
+  });
+
+  it('prints image URLs instead of counts when includeImages is set', async () => {
+    h.impl.facebook = {
+      search: () => ok('facebook', [listing({ images: ['https://cdn/1.jpg', 'https://cdn/2.jpg'] })]),
+    };
+    const text = textOf(await call('search_marketplace', { query: 'chair', marketplace: 'all', includeImages: true }));
+    expect(text).toContain('    🖼️ Images: https://cdn/1.jpg , https://cdn/2.jpg');
+    expect(text).not.toContain('📷');
+  });
+
+  it('sorts a listing with no numeric price ahead of every priced one', async () => {
+    h.impl.facebook = {
+      search: () =>
+        ok('facebook', [
+          listing({ id: 'free', title: 'Free', price: 'Free', priceNumeric: undefined }),
+          listing({ id: 'mid', title: 'Mid', priceNumeric: 40 }),
+          listing({ id: 'top', title: 'Top', priceNumeric: 90 }),
+          listing({ id: 'swap', title: 'Swap', price: 'Trade', priceNumeric: undefined }),
+        ]),
+    };
+    const text = textOf(await call('search_marketplace', { query: 'chair', marketplace: 'all' }));
+    const order = ['Free', 'Swap', 'Mid', 'Top'].map((t) => text.indexOf(t));
+    expect(Math.max(order[0], order[1])).toBeLessThan(order[2]);
+    expect(order[2]).toBeLessThan(order[3]);
+    expect(order.every((i) => i >= 0)).toBe(true);
+  });
+});

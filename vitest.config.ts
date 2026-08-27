@@ -16,10 +16,10 @@ export default defineConfig({
       // currently reaches so an unrelated refactor does not fail CI, while a
       // meaningful drop still does.
       thresholds: {
-        statements: 93,
-        branches: 88,
-        functions: 85,
-        lines: 93,
+        statements: 95,
+        branches: 96,
+        functions: 87,
+        lines: 95,
       },
     },
   },
