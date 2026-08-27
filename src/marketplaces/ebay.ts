@@ -253,10 +253,11 @@ export class EbayMarketplace extends BaseMarketplace {
       if (listings.length >= target) break;
 
       try {
-        const priceStr = item.price
-          ? `${item.price.currency === 'USD' ? '$' : item.price.currency}${item.price.value}`
-          : 'Price not listed';
-        const parsed = this.parsePrice(priceStr);
+        // Browse gives amount and currency as separate fields, so only the
+        // amount needs parsing; the currency is already known.
+        const currency = item.price?.currency === 'USD' ? '$' : item.price?.currency;
+        const priceStr = item.price ? `${currency}${item.price.value}` : 'Price not listed';
+        const parsed = item.price ? this.parsePrice(String(item.price.value)) : null;
 
         // Only grab primary image for search results; full set via getListingDetails
         const images: string[] = [];
@@ -272,7 +273,7 @@ export class EbayMarketplace extends BaseMarketplace {
           title: item.title || 'Untitled Listing',
           price: priceStr,
           priceNumeric: parsed?.numeric,
-          currency: parsed?.currency || '$',
+          currency: currency ?? '$',
           condition: item.condition,
           location: locationText || undefined,
           url: item.itemWebUrl || `https://www.ebay.com/itm/${item.itemId}`,

@@ -24,14 +24,10 @@ export interface Marketplace {
   healthCheck(): Promise<boolean>;
 }
 
-const CURRENCY_CODES = [
-  'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK',
-  'PLN', 'NZD', 'MXN', 'HKD', 'SGD', 'MYR', 'PHP', 'TWD',
-];
-
-const PRICE_PATTERN = new RegExp(
-  `(?:\\b(${CURRENCY_CODES.join('|')})|([£€$]))?\\s*(\\d[\\d.,]*)`
-);
+// A three-letter code or a symbol, whichever prefixes the amount. Matching any
+// code rather than a list means a marketplace in a currency we have not seen
+// still reports it correctly instead of silently claiming dollars.
+const PRICE_PATTERN = /(?:([A-Z]{3})(?=\s*\d)|([£€$]))?\s*(\d[\d.,]*)/;
 
 /**
  * Rightmost separator wins when both appear ("1,234.56", "1.234,56"). With only

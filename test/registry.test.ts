@@ -306,3 +306,12 @@ describe('BaseMarketplace.parsePrice', () => {
     expect(new TestMarketplace().price('GBP12.99')?.currency).toBe('GBP');
   });
 });
+
+describe('BaseMarketplace.parsePrice currency codes', () => {
+  it.each(['BRL120,00', 'INR450.00', 'ZAR99.99', 'CZK250,00'])(
+    'reads %s without needing the code on a list',
+    (input) => {
+      expect(new TestMarketplace().price(input)?.currency).toBe(input.slice(0, 3));
+    },
+  );
+});
