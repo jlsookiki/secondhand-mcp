@@ -18,11 +18,22 @@ const OAUTH_SCOPE = 'https://api.ebay.com/oauth/api_scope';
 const EBAY_PAGE_SIZE = 200;
 const EBAY_MAX_OFFSET = 10_000;
 
+// The Browse API `conditions` filter only accepts NEW, USED and UNSPECIFIED;
+// finer grades are reachable only through the numeric `conditionIds` filter.
+const MARKETPLACE_CURRENCY: Record<string, string> = {
+  EBAY_US: 'USD', EBAY_GB: 'GBP', EBAY_DE: 'EUR', EBAY_FR: 'EUR', EBAY_IT: 'EUR',
+  EBAY_ES: 'EUR', EBAY_NL: 'EUR', EBAY_IE: 'EUR', EBAY_AT: 'EUR', EBAY_BE: 'EUR',
+  EBAY_CA: 'CAD', EBAY_AU: 'AUD', EBAY_CH: 'CHF', EBAY_PL: 'PLN', EBAY_HK: 'HKD',
+  EBAY_SG: 'SGD', EBAY_MY: 'MYR', EBAY_PH: 'PHP', EBAY_TW: 'TWD',
+};
+
 const CONDITION_MAP: Record<string, string> = {
   new: 'NEW',
   like_new: 'LIKE_NEW',
+  excellent: 'USED',
   good: 'GOOD',
   fair: 'FAIR',
+  used: 'USED',
 };
 
 /**
@@ -81,6 +92,10 @@ export class EbayMarketplace extends BaseMarketplace {
     return this._marketplaceId;
   }
 
+  private marketplaceCurrency(): string {
+    return MARKETPLACE_CURRENCY[this._marketplaceId] ?? 'USD';
+  }
+
   async search(params: SearchParams): Promise<SearchResult> {
     const { query, maxPrice, minPrice, condition, limit = 20, offset = 0 } = params;
 
@@ -98,7 +113,9 @@ export class EbayMarketplace extends BaseMarketplace {
       if (minPrice != null || maxPrice != null) {
         const min = minPrice ?? '';
         const max = maxPrice ?? '';
-        filters.push(`price:[${min}..${max}]`);
+        // Browse silently drops a price filter that arrives without a currency,
+        // returning unfiltered results rather than an error.
+        filters.push(`price:[${min}..${max}]`, `priceCurrency:${this.marketplaceCurrency()}`);
       }
       if (condition && condition !== 'any') {
         const ebayCondition = CONDITION_MAP[condition];
@@ -149,7 +166,7 @@ export class EbayMarketplace extends BaseMarketplace {
 
         const data = (await response.json()) as any;
         total = data.total ?? total;
-        const items = data.itemSummaries ?? [];
+        const items = Array.isArray(data.itemSummaries) ? data.itemSummaries : [];
         if (items.length === 0) break; // no more results available
 
         this.parseListings(items, target, listings);
@@ -177,9 +194,9 @@ export class EbayMarketplace extends BaseMarketplace {
     const token = await this.getToken();
 
     // Listing URLs show a bare number; the Browse API wants "v1|123456|0".
-    if (/^\d+$/.test(itemId)) itemId = `v1|${itemId}|0`;
+    const apiItemId = /^\d+$/.test(itemId) ? `v1|${itemId}|0` : itemId;
 
-    const response = await fetch(`${BROWSE_API_URL}/item/${encodeURIComponent(itemId)}`, {
+    const response = await fetch(`${BROWSE_API_URL}/item/${encodeURIComponent(apiItemId)}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-EBAY-C-MARKETPLACE-ID': this._marketplaceId,
@@ -236,10 +253,11 @@ export class EbayMarketplace extends BaseMarketplace {
       if (listings.length >= target) break;
 
       try {
-        const priceStr = item.price
-          ? `${item.price.currency === 'USD' ? '$' : item.price.currency}${item.price.value}`
-          : 'Price not listed';
-        const parsed = this.parsePrice(priceStr);
+        // Browse gives amount and currency as separate fields, so only the
+        // amount needs parsing; the currency is already known.
+        const currency = item.price?.currency === 'USD' ? '$' : item.price?.currency;
+        const priceStr = item.price ? `${currency}${item.price.value}` : 'Price not listed';
+        const parsed = item.price ? this.parsePrice(String(item.price.value)) : null;
 
         // Only grab primary image for search results; full set via getListingDetails
         const images: string[] = [];
@@ -255,7 +273,7 @@ export class EbayMarketplace extends BaseMarketplace {
           title: item.title || 'Untitled Listing',
           price: priceStr,
           priceNumeric: parsed?.numeric,
-          currency: parsed?.currency || '$',
+          currency: currency ?? '$',
           condition: item.condition,
           location: locationText || undefined,
           url: item.itemWebUrl || `https://www.ebay.com/itm/${item.itemId}`,

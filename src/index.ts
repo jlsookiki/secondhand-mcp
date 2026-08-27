@@ -7,6 +7,9 @@
  * Facebook Marketplace, eBay, Craigslist, and more.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -21,15 +24,15 @@ import {
   getMarketplace,
   getAllMarketplaces,
   listMarketplaceNames,
-  FacebookMarketplace,
-  EbayMarketplace,
-  DepopMarketplace,
-  PoshmarkMarketplace,
   resizeEbayImageUrl,
 } from './marketplaces/index.js';
 
 // Initialize marketplaces
 initializeMarketplaces();
+
+const { version: VERSION } = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+) as { version: string };
 
 // Image handling shared by get_listing_details.
 const IMAGE_SIZE_PX = { thumb: 400, standard: 800, full: 1600 } as const;
@@ -237,7 +240,7 @@ Results are read-only. Nothing here can message a seller, make an offer, or buy 
 const server = new Server(
   {
     name: 'secondhand-mcp',
-    version: '0.1.0',
+    version: VERSION,
   },
   {
     capabilities: {
@@ -276,6 +279,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         sizes?: string[];
         colors?: string[];
       };
+
+      if (!params.query) {
+        return {
+          content: [{ type: 'text', text: 'Missing required parameter: query' }],
+          isError: true,
+        };
+      }
 
       const searchParams: SearchParams = {
         query: params.query,
@@ -377,23 +387,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      try {
-        const targetMp = mpName || 'facebook';
-        let details: ListingDetails;
+      const targetMp = mpName || 'facebook';
+      const marketplace = getMarketplace(targetMp) as
+        | { getListingDetails?: (id: string) => Promise<ListingDetails> }
+        | undefined;
+      if (!marketplace?.getListingDetails) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Unknown marketplace or listing details unsupported: ${targetMp}. Available: ${listMarketplaceNames().join(', ')}`,
+          }],
+          isError: true,
+        };
+      }
 
-        if (targetMp === 'ebay') {
-          const ebay = getMarketplace('ebay') as EbayMarketplace;
-          details = await ebay.getListingDetails(listingId);
-        } else if (targetMp === 'depop') {
-          const depop = getMarketplace('depop') as DepopMarketplace;
-          details = await depop.getListingDetails(listingId);
-        } else if (targetMp === 'poshmark') {
-          const poshmark = getMarketplace('poshmark') as PoshmarkMarketplace;
-          details = await poshmark.getListingDetails(listingId);
-        } else {
-          const fb = getMarketplace('facebook') as FacebookMarketplace;
-          details = await fb.getListingDetails(listingId);
-        }
+      try {
+        const details = await marketplace.getListingDetails(listingId);
 
         const total = details.images.length;
         const mode: 'urls' | 'inline' = imageMode ?? (includeImages ? 'inline' : 'urls');

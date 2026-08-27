@@ -105,11 +105,19 @@ function splitCityState(q: string): { city: string; state?: string } {
     if (code) return { city: q.slice(0, comma).trim(), state: code };
   }
 
-  // No comma: peel the longest trailing state name, then a bare code.
+  // No comma: peel the longest trailing state name, then a bare code. Longest
+  // wins so "charleston west virginia" is not read as a city in Virginia.
+  let longest: { name: string; code: string } | undefined;
   for (const [name, code] of Object.entries(STATE_CODES)) {
-    if (q.endsWith(` ${name}`)) {
-      return { city: q.slice(0, q.length - name.length - 1).trim(), state: code };
+    if (q.endsWith(` ${name}`) && (!longest || name.length > longest.name.length)) {
+      longest = { name, code };
     }
+  }
+  if (longest) {
+    return {
+      city: q.slice(0, q.length - longest.name.length - 1).trim(),
+      state: longest.code,
+    };
   }
   const m = q.match(/^(.+?)\s+([a-z]{2})$/);
   if (m && Object.values(STATE_CODES).includes(m[2].toUpperCase())) {
@@ -126,11 +134,12 @@ export function lookupUsCity(query: string): LocationCoordinates | null {
   const { city, state } = splitCityState(q);
   const name = keyify(CITY_ALIASES[keyify(city)] ?? city);
 
+  const code = state?.toLowerCase();
   const hit =
-    (state && index.get(`${name}|${state.toLowerCase()}`)) ||
-    // "washington dc" parses as city "washington" + state DC, but GeoNames
-    // calls it "Washington, D.C." — retry the whole query as one name.
-    (state && index.get(keyify(CITY_ALIASES[keyify(q)] ?? q))) ||
+    (code && index.get(`${name}|${code}`)) ||
+    // GeoNames folds the district into the name ("Washington, D.C."), so the
+    // key still carries the state that was just split off the query.
+    (code && index.get(`${name} ${code}|${code}`)) ||
     (!state ? index.get(name) : undefined);
   if (!hit) return null;
 

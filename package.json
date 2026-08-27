@@ -18,7 +18,11 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "prepublishOnly": "npm run build",
-    "test:locations": "node test/locations.mjs"
+    "test:locations": "node test/locations.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "npm run build && npm run test:locations && vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "mcp",
@@ -47,8 +51,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "ts-node": "^10.9.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=18.0.0"
