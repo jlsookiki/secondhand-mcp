@@ -24,6 +24,38 @@ export interface Marketplace {
   healthCheck(): Promise<boolean>;
 }
 
+const CURRENCY_CODES = [
+  'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK',
+  'PLN', 'NZD', 'MXN', 'HKD', 'SGD', 'MYR', 'PHP', 'TWD',
+];
+
+const PRICE_PATTERN = new RegExp(
+  `(?:\\b(${CURRENCY_CODES.join('|')})|([£€$]))?\\s*(\\d[\\d.,]*)`
+);
+
+/**
+ * Rightmost separator wins when both appear ("1,234.56", "1.234,56"). With only
+ * one kind, three-digit runs mean grouping ("1,234,567") and anything else is a
+ * decimal ("89,00").
+ */
+function parseAmount(raw: string): number {
+  const digits = raw.replace(/[.,]+$/, '');
+  const sepIndex = Math.max(digits.lastIndexOf(','), digits.lastIndexOf('.'));
+  if (sepIndex === -1) return parseFloat(digits);
+
+  const separator = digits[sepIndex];
+  const plain = digits.replace(/[.,]/g, '');
+
+  if (!digits.includes(separator === ',' ? '.' : ',')) {
+    const parts = digits.split(separator);
+    const grouped = parts.slice(1).every((p) => p.length === 3) && parts[0].length <= 3;
+    if (grouped) return parseFloat(plain);
+  }
+
+  const decimals = digits.length - sepIndex - 1;
+  return parseFloat(`${plain.slice(0, plain.length - decimals)}.${plain.slice(plain.length - decimals)}`);
+}
+
 export abstract class BaseMarketplace implements Marketplace {
   abstract readonly name: string;
   abstract readonly displayName: string;
@@ -36,16 +68,15 @@ export abstract class BaseMarketplace implements Marketplace {
   }
   
   protected parsePrice(priceStr: string): { numeric: number; currency: string } | null {
-    // Handle common price formats: $50, $1,234.56, €50, £50
-    const match = priceStr.match(/([£€$])?[\s]*([\d,]+(?:\.\d{2})?)/);
+    const match = priceStr.match(PRICE_PATTERN);
     if (!match) return null;
-    
-    const currency = match[1] || '$';
-    const numeric = parseFloat(match[2].replace(/,/g, ''));
-    
-    return { numeric, currency };
+
+    const currency = match[1] ?? match[2] ?? '$';
+    const numeric = parseAmount(match[3]);
+
+    return Number.isNaN(numeric) ? null : { numeric, currency };
   }
-  
+
   protected createError(message: string): SearchResult {
     return {
       marketplace: this.name,

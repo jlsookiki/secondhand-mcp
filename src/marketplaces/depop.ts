@@ -104,7 +104,7 @@ export class DepopMarketplace extends BaseMarketplace {
           const parsed = this.parsePrice(priceStr);
           return {
             id: r.slug,
-            title: this.humanizeSlug(r.slug),
+            title: r.label.trim() || this.humanizeSlug(r.slug),
             price: priceStr,
             priceNumeric: parsed?.numeric,
             currency: parsed?.currency || '$',
@@ -210,10 +210,14 @@ export class DepopMarketplace extends BaseMarketplace {
   private humanizeSlug(slug: string): string {
     const parts = slug.split('-');
     if (parts.length <= 2) return slug.replace(/-/g, ' ');
-    // Drop the leading username and the trailing random suffix.
-    const titleParts = parts.slice(1, -1);
+    // Leading segment is the seller's username; a trailing id is rare but possible.
+    const titleParts = parts.slice(1, this.looksLikeId(parts[parts.length - 1]) ? -1 : undefined);
     return titleParts
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  }
+
+  private looksLikeId(part: string): boolean {
+    return /^[0-9a-f]{8,}$/i.test(part) || /^\d{6,}$/.test(part);
   }
 }

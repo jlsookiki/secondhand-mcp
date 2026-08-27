@@ -340,34 +340,27 @@ export class FacebookMarketplace extends BaseMarketplace {
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const remaining = deadline - Date.now();
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+
       try {
-        const response = await fetch(GRAPHQL_URL, {
-          method: 'POST',
-          headers: GRAPHQL_HEADERS,
-          body: body.toString(),
-          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
-          // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
-          dispatcher: proxyAgent,
+        const running = this.attemptGraphQL(body, Math.min(ATTEMPT_TIMEOUT_MS, remaining));
+        // A transport that is slow to honour its abort would otherwise carry an
+        // attempt past the deadline; losing this race is what caps elapsed time.
+        running.catch(() => {});
+        const expired = new Promise<never>((_, reject) => {
+          expiry = setTimeout(
+            () =>
+              reject(
+                Object.assign(new Error('Facebook request exceeded its time budget'), {
+                  name: 'TimeoutError',
+                })
+              ),
+            remaining
+          );
         });
 
-        if (RETRYABLE_STATUS.has(response.status)) {
-          throw new Error(`Facebook API returned status ${response.status}`);
-        }
-        if (!response.ok) {
-          throw Object.assign(new Error(`Facebook API returned status ${response.status}`), {
-            fatal: true,
-          });
-        }
-
-        const json = (await response.json()) as any;
-
-        if (json.errors?.length) {
-          throw Object.assign(new Error(`Facebook GraphQL error: ${json.errors[0].message}`), {
-            fatal: true,
-          });
-        }
-
-        return json;
+        return await Promise.race([running, expired]);
       } catch (err: any) {
         if (err?.fatal) throw err;
         lastError = err;
@@ -375,9 +368,41 @@ export class FacebookMarketplace extends BaseMarketplace {
         const backoff = 1000 * 2 ** (attempt - 1) * (0.5 + Math.random());
         if (attempt === MAX_ATTEMPTS || Date.now() + backoff >= deadline) break;
         await new Promise((r) => setTimeout(r, backoff));
+      } finally {
+        clearTimeout(expiry);
       }
     }
 
     throw lastError ?? new Error('Facebook request failed');
+  }
+
+  private async attemptGraphQL(body: URLSearchParams, timeoutMs: number): Promise<any> {
+    const response = await fetch(GRAPHQL_URL, {
+      method: 'POST',
+      headers: GRAPHQL_HEADERS,
+      body: body.toString(),
+      signal: AbortSignal.timeout(timeoutMs),
+      // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
+      dispatcher: proxyAgent,
+    });
+
+    if (RETRYABLE_STATUS.has(response.status)) {
+      throw new Error(`Facebook API returned status ${response.status}`);
+    }
+    if (!response.ok) {
+      throw Object.assign(new Error(`Facebook API returned status ${response.status}`), {
+        fatal: true,
+      });
+    }
+
+    const json = (await response.json()) as any;
+
+    if (json.errors?.length) {
+      throw Object.assign(new Error(`Facebook GraphQL error: ${json.errors[0].message}`), {
+        fatal: true,
+      });
+    }
+
+    return json;
   }
 }
