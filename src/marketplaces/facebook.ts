@@ -10,6 +10,7 @@
 
 import { ProxyAgent } from 'undici';
 import { BaseMarketplace } from './base.js';
+import { lookupUsCity } from './us-cities.js';
 import { SearchParams, SearchResult, Listing, ListingDetails, LocationCoordinates } from '../types.js';
 
 // GraphQL endpoint and operation identifiers
@@ -18,6 +19,15 @@ const LOCATION_DOC_ID = '5585904654783609';
 const SEARCH_DOC_ID = '7111939778879383';
 const DETAIL_PHOTOS_DOC_ID = '10059604367394414';
 const DETAIL_INFO_DOC_ID = '26090240497332612';
+
+const MAX_ATTEMPTS = 3;
+const ATTEMPT_TIMEOUT_MS = 8000;
+const TOTAL_BUDGET_MS = 15000;
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const SEARCH_CACHE_TTL_MS = 90_000;
+const SEARCH_CACHE_MAX = 200;
+
+
 
 const GRAPHQL_HEADERS: Record<string, string> = {
   'content-type': 'application/x-www-form-urlencoded',
@@ -41,9 +51,16 @@ export class FacebookMarketplace extends BaseMarketplace {
 
   // Cache location lookups to avoid repeat requests for the same city
   private locationCache: Map<string, LocationCoordinates> = new Map();
+  private searchCache: Map<string, { at: number; result: SearchResult }> = new Map();
 
   async search(params: SearchParams): Promise<SearchResult> {
     const { query, location = 'san francisco', maxPrice, minPrice, limit = 24 } = params;
+
+    const cacheKey = JSON.stringify([query, location, maxPrice, minPrice, limit, params.showSold]);
+    const hit = this.searchCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < SEARCH_CACHE_TTL_MS) {
+      return hit.result;
+    }
 
     try {
       // Step 1: Resolve location to coordinates
@@ -91,12 +108,20 @@ export class FacebookMarketplace extends BaseMarketplace {
       const edges = response.data.marketplace_search.feed_units.edges;
       const listings = this.parseListings(edges, limit, params.showSold ?? false);
 
-      return {
+      const result: SearchResult = {
         marketplace: this.name,
         success: true,
         listings,
         totalFound: listings.length,
       };
+
+      this.searchCache.set(cacheKey, { at: Date.now(), result });
+      if (this.searchCache.size > SEARCH_CACHE_MAX) {
+        const oldest = this.searchCache.keys().next().value;
+        if (oldest !== undefined) this.searchCache.delete(oldest);
+      }
+
+      return result;
     } catch (error) {
       return this.createError(`Facebook Marketplace search failed: ${error}`);
     }
@@ -169,9 +194,41 @@ export class FacebookMarketplace extends BaseMarketplace {
 
   // ── Private helpers ──────────────────────────────────────────────
 
-  private async resolveLocation(query: string): Promise<LocationCoordinates | null> {
-    const cacheKey = query.toLowerCase().trim();
+  /**
+   * Facebook's city search is literal, and a "City, ST" query does not just
+   * miss — "kansas city, mo" returns Mound City, Kansas. Spelling the state
+   * out is the only form that reliably lands, so it goes first; the bare
+   * city name is a last resort because "austin" is Austin, Illinois.
+   */
+  private locationCandidates(query: string): string[] {
+    const base = query.toLowerCase().trim();
+    const out: string[] = [];
 
+    if (!out.includes(base)) out.push(base);
+
+    const bareCity = base.split(',')[0].trim();
+    if (bareCity && !out.includes(bareCity)) out.push(bareCity);
+
+    return out;
+  }
+
+  private async resolveLocation(query: string): Promise<LocationCoordinates | null> {
+    const local = lookupUsCity(query);
+    if (local) return local;
+
+    const primaryKey = query.toLowerCase().trim();
+
+    for (const candidate of this.locationCandidates(query)) {
+      const coords = await this.resolveLocationExact(candidate);
+      if (coords) {
+        if (candidate !== primaryKey) this.locationCache.set(primaryKey, coords);
+        return coords;
+      }
+    }
+    return null;
+  }
+
+  private async resolveLocationExact(cacheKey: string): Promise<LocationCoordinates | null> {
     if (this.locationCache.has(cacheKey)) {
       return this.locationCache.get(cacheKey)!;
     }
@@ -192,7 +249,13 @@ export class FacebookMarketplace extends BaseMarketplace {
         return null;
       }
 
-      const node = edges[0].node;
+      // Results are ranked by check-ins, so "phoenix" leads with a venue in
+      // South Africa and "sacramento" with a street in Portugal. Only real
+      // places carry the bare "City" subtitle.
+      const cityEdge = edges.find(
+        (e: any) => e.node?.subtitle?.split(' \u00b7')[0] === 'City',
+      );
+      const node = (cityEdge ?? edges[0]).node;
       const name =
         node.subtitle?.split(' \u00b7')[0] === 'City'
           ? node.single_line_address
@@ -273,24 +336,48 @@ export class FacebookMarketplace extends BaseMarketplace {
       doc_id: docId,
     });
 
-    const response = await fetch(GRAPHQL_URL, {
-      method: 'POST',
-      headers: GRAPHQL_HEADERS,
-      body: body.toString(),
-      // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
-      dispatcher: proxyAgent,
-    });
+    const deadline = Date.now() + TOTAL_BUDGET_MS;
+    let lastError: Error | undefined;
 
-    if (!response.ok) {
-      throw new Error(`Facebook API returned status ${response.status}`);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(GRAPHQL_URL, {
+          method: 'POST',
+          headers: GRAPHQL_HEADERS,
+          body: body.toString(),
+          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+          // @ts-ignore — dispatcher is a Node.js/undici-specific fetch option
+          dispatcher: proxyAgent,
+        });
+
+        if (RETRYABLE_STATUS.has(response.status)) {
+          throw new Error(`Facebook API returned status ${response.status}`);
+        }
+        if (!response.ok) {
+          throw Object.assign(new Error(`Facebook API returned status ${response.status}`), {
+            fatal: true,
+          });
+        }
+
+        const json = (await response.json()) as any;
+
+        if (json.errors?.length) {
+          throw Object.assign(new Error(`Facebook GraphQL error: ${json.errors[0].message}`), {
+            fatal: true,
+          });
+        }
+
+        return json;
+      } catch (err: any) {
+        if (err?.fatal) throw err;
+        lastError = err;
+
+        const backoff = 1000 * 2 ** (attempt - 1) * (0.5 + Math.random());
+        if (attempt === MAX_ATTEMPTS || Date.now() + backoff >= deadline) break;
+        await new Promise((r) => setTimeout(r, backoff));
+      }
     }
 
-    const json = (await response.json()) as any;
-
-    if (json.errors?.length) {
-      throw new Error(`Facebook GraphQL error: ${json.errors[0].message}`);
-    }
-
-    return json;
+    throw lastError ?? new Error('Facebook request failed');
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "secondhand-mcp",
   "version": "0.5.0",
-  "description": "MCP server for searching secondhand marketplaces — Facebook Marketplace, eBay, Depop, and Poshmark. Search listings, filter by price/category/condition/size/color, and get full details with photos.",
+  "description": "MCP server for searching secondhand marketplaces \u2014 Facebook Marketplace, eBay, Depop, and Poshmark. Search listings, filter by price/category/condition/size/color, and get full details with photos.",
   "mcpName": "io.github.jlsookiki/secondhand-mcp",
   "type": "module",
   "main": "dist/index.js",
@@ -17,7 +17,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:locations": "node test/locations.mjs"
   },
   "keywords": [
     "mcp",
@@ -38,6 +39,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "~1.5.0",
+    "all-the-cities": "^3.1.0",
     "puppeteer-core": "^24.37.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
