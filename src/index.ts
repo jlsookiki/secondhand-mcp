@@ -235,6 +235,8 @@ Empty results usually mean the search was too narrow, not that nothing exists. B
 
 Filters are not universal — each parameter says which marketplaces apply it. Where one does not apply it is ignored, so do not describe results as filtered by something that marketplace never applied; put those words in the query instead.
 
+Always link every listing you mention, without the user asking. The link is how they open photos, check the seller, and buy — a listing shown without its link is a dead end. Use the listing title as the link text, and keep each link with its item rather than collecting links at the end.
+
 Results are read-only. Nothing here can message a seller, make an offer, or buy anything, so do not tell the user an item has been purchased or reserved.`;
 
 const server = new Server(
