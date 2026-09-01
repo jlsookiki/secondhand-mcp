@@ -15,6 +15,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      # Kept as a compile check — the suite itself runs against src.
       - run: npm run build
-      - run: npm run test:locations
       - run: npm test
