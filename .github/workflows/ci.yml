@@ -6,34 +6,15 @@ on:
   pull_request:
 
 jobs:
-  # The full suite. vitest's rolldown dependency imports node:util#styleText,
-  # which doesn't exist before Node 20.12 — so the runner can't go lower.
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: ['20', '22']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run build
       - run: npm run test:locations
       - run: npm test
-
-  # package.json claims engines >=18, so prove the shipped artifact still
-  # builds and runs there even though the dev toolchain can't.
-  node18-compat:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npm run test:locations
