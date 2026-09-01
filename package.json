@@ -1,6 +1,6 @@
 {
   "name": "secondhand-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server for searching secondhand marketplaces \u2014 Facebook Marketplace, eBay, Depop, and Poshmark. Search listings, filter by price/category/condition/size/color, and get full details with photos.",
   "mcpName": "io.github.jlsookiki/secondhand-mcp",
   "type": "module",
