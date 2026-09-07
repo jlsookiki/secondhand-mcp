@@ -20,6 +20,10 @@ const EBAY_MAX_OFFSET = 10_000;
 
 // The Browse API `conditions` filter only accepts NEW, USED and UNSPECIFIED;
 // finer grades are reachable only through the numeric `conditionIds` filter.
+export function currencySymbol(code: string): string {
+  return { USD: '$', GBP: '£', AUD: 'A$', CAD: 'C$', EUR: '€', CHF: 'CHF ', PLN: 'zł', HKD: 'HK$' }[code] ?? `${code} `;
+}
+
 const MARKETPLACE_CURRENCY: Record<string, string> = {
   EBAY_US: 'USD', EBAY_GB: 'GBP', EBAY_DE: 'EUR', EBAY_FR: 'EUR', EBAY_IT: 'EUR',
   EBAY_ES: 'EUR', EBAY_NL: 'EUR', EBAY_IE: 'EUR', EBAY_AT: 'EUR', EBAY_BE: 'EUR',
@@ -161,7 +165,11 @@ export class EbayMarketplace extends BaseMarketplace {
           // If earlier pages succeeded, return what we have rather than failing.
           if (listings.length > 0) break;
           const errBody = await response.text();
-          return this.createError(`eBay API returned ${response.status}: ${errBody}`);
+          const hint =
+            response.status === 401 || response.status === 403
+              ? '. Check EBAY_CLIENT_ID and EBAY_CLIENT_SECRET.'
+              : '';
+          return this.createError(`eBay API returned ${response.status}: ${errBody}${hint}`);
         }
 
         const data = (await response.json()) as any;
@@ -255,7 +263,7 @@ export class EbayMarketplace extends BaseMarketplace {
       try {
         // Browse gives amount and currency as separate fields, so only the
         // amount needs parsing; the currency is already known.
-        const currency = item.price?.currency === 'USD' ? '$' : item.price?.currency;
+        const currency = item.price?.currency ? currencySymbol(item.price.currency) : undefined;
         const priceStr = item.price ? `${currency}${item.price.value}` : 'Price not listed';
         const parsed = item.price ? this.parsePrice(String(item.price.value)) : null;
 

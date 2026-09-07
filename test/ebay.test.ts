@@ -179,6 +179,16 @@ describe('EbayMarketplace auth token', () => {
     expect(callsTo(TOKEN_URL)).toHaveLength(2);
   });
 
+  it('names the credential variables when the browse API rejects the token', async () => {
+    install({ search: () => json({ errors: [{ message: 'Invalid access token' }] }, 401) });
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('401');
+    expect(result.error).toContain('EBAY_CLIENT_ID');
+  });
+
   it('reports an OAuth failure as a search error without hitting the browse API', async () => {
     install({ token: () => json({ error: 'invalid_client' }, 401) });
 
@@ -370,8 +380,8 @@ describe('EbayMarketplace.search results', () => {
     const [listing] = (await market({ marketplaceId: 'EBAY_DE' }).search({ query: 'lamp', limit: 1 }))
       .listings;
 
-    expect(listing.price).toBe('EUR25.50');
-    expect(listing.currency).toBe('EUR');
+    expect(listing.price).toBe('€25.50');
+    expect(listing.currency).toBe('€');
   });
 
   it('adds a note when nothing matched', async () => {
