@@ -7,7 +7,7 @@ vi.mock('undici', () => ({ ProxyAgent: class {} }));
 
 const GRAPHQL_URL = 'https://www.facebook.com/api/graphql/';
 const LOCATION_DOC_ID = '5585904654783609';
-const SEARCH_DOC_ID = '7111939778879383';
+const SEARCH_DOC_ID = '27517490627932547';
 const ATTEMPT_TIMEOUT_MS = 8_000;
 const TOTAL_BUDGET_MS = 15_000;
 const SEARCH_CACHE_TTL_MS = 90_000;
@@ -317,10 +317,9 @@ describe('search requests and parsing', () => {
     expect((await search()).listings).toHaveLength(1);
   });
 
-  it('skips feed units that are not listing stories', async () => {
+  it('skips feed units that carry no listing, whatever the wrapper is called', async () => {
     const { data } = searchBody([item({ id: 'real' })]);
     data.marketplace_search.feed_units.edges.unshift(
-      { node: { __typename: 'MarketplaceFeedAdStoryObject', listing: item({ id: 'ad' }) } } as any,
       { node: { __typename: 'MarketplaceFeedListingStoryObject', listing: null } } as any,
       {} as any
     );
@@ -364,13 +363,131 @@ describe('search requests and parsing', () => {
     expect(calls[0].variables.params.bqf.query).toBe('bike');
   });
 
-  it('flags a payload whose shape it does not recognise', async () => {
+  it('flags a payload whose shape it does not recognise when the page fallback fails too', async () => {
     stubFetch(() => json({ data: {} }));
 
     const result = await search();
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('doc_id');
+  });
+
+  it('passes the radius through in kilometres, defaulting to 25 miles', async () => {
+    const { calls } = stubFetch(() => json(searchBody([])));
+
+    await search();
+    await search({ query: 'kayak', radius: 50 });
+
+    expect(calls[0].variables.params.browse_request_params.filter_radius_km).toBe(40);
+    expect(calls[1].variables.params.browse_request_params.filter_radius_km).toBe(80);
+  });
+});
+
+describe('gated API version and the search page fallback', () => {
+  const CITY_PAGE_ID = '108659242498155';
+  const cityPageBody = {
+    data: {
+      city_street_search: {
+        street_results: {
+          edges: [
+            { node: { subtitle: 'Venue · Somewhere', page: { id: 'venue' } } },
+            { node: { subtitle: 'City · California', page: { id: CITY_PAGE_ID } } },
+          ],
+        },
+      },
+    },
+  };
+  const pageHtml = (ids: string[]) => {
+    const edges = ids.map((id) => ({ node: { listing: item({ id, marketplace_listing_title: 'Trek [gated]' }) } }));
+    const shell = '"marketplace_search":{"feed_units":{"edges":[]}}';
+    const real = `"marketplace_search":{"feed_units":{"edges":${JSON.stringify(edges)}}}`;
+    return `<html><script>{${shell}}</script><script>{${real}}</script></html>`;
+  };
+  const html = (body: string, status = 200) =>
+    new Response(body, { status, headers: { 'content-type': 'text/html' } });
+  const gatedSearchBody = (listings: unknown[], hasNextPage: boolean) => {
+    const body = searchBody(listings);
+    (body.data.marketplace_search.feed_units as any).page_info = { has_next_page: hasNextPage };
+    return body;
+  };
+
+  it('reads the search page when the API returns one edge with more pages behind it', async () => {
+    const { calls } = stubFetch((req) => {
+      if (req.url.includes('/marketplace/')) return html(pageHtml(['p1', 'p2', 'p3']));
+      if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
+      return json(gatedSearchBody([item({ id: 'g1' })], true));
+    });
+
+    const result = await search();
+
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['p1', 'p2', 'p3']);
+    const pageCall = calls.find((c) => c.url.includes('/marketplace/'))!;
+    expect(pageCall.url).toContain(`/marketplace/${CITY_PAGE_ID}/search?`);
+    expect(pageCall.url).toContain('query=bike');
+    expect(pageCall.url).toContain('radius=25');
+  });
+
+  it('reads the search page when the API returns story stubs without listings', async () => {
+    stubFetch((req) => {
+      if (req.url.includes('/marketplace/')) return html(pageHtml(['p1']));
+      if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
+      const body = searchBody([]);
+      body.data.marketplace_search.feed_units.edges.push({ node: { __typename: 'MarketplaceFeedStory' } } as any);
+      return json(body);
+    });
+
+    const result = await search();
+
+    expect(result.listings.map((l) => l.id)).toEqual(['p1']);
+  });
+
+  it('trusts a full page of API results without touching the search page', async () => {
+    const { calls } = stubFetch(() =>
+      json(gatedSearchBody(Array.from({ length: 8 }, (_, i) => item({ id: String(i) })), true))
+    );
+
+    const result = await search();
+
+    expect(result.listings).toHaveLength(8);
+    expect(calls.some((c) => c.url.includes('/marketplace/'))).toBe(false);
+  });
+
+  it('keeps the thin API result when the search page cannot be read', async () => {
+    stubFetch((req) => {
+      if (req.url.includes('/marketplace/')) return html('<html>login</html>');
+      if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
+      return json(gatedSearchBody([item({ id: 'g1' })], true));
+    });
+
+    const result = await search();
+
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['g1']);
+  });
+
+  it('picks the payload that actually carries listings when the page holds several shells', async () => {
+    stubFetch((req) => {
+      if (req.url.includes('/marketplace/')) return html(pageHtml(['only']));
+      if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
+      return json({ data: {} });
+    });
+
+    const result = await search();
+
+    expect(result.listings.map((l) => l.id)).toEqual(['only']);
+  });
+
+  it('carries the radius onto the search page url', async () => {
+    const { calls } = stubFetch((req) => {
+      if (req.url.includes('/marketplace/')) return html(pageHtml(['p1']));
+      if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
+      return json({ data: {} });
+    });
+
+    await search({ radius: 60 });
+
+    expect(calls.find((c) => c.url.includes('/marketplace/'))!.url).toContain('radius=60');
   });
 });
 

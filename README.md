@@ -143,6 +143,7 @@ Search for items across marketplaces.
 | `query` | Yes | | Search terms |
 | `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
+| `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
 | `limit` | No | `20` | Max results |
@@ -202,7 +203,7 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 ## How It Works
 
-**Facebook Marketplace** — Searches listings by location, price, and query. Resolves city names to coordinates. No login or browser needed.
+**Facebook Marketplace** — Searches listings by location, radius, price, and query. Resolves city names to coordinates. No login or browser needed. Facebook serves non-browser callers a gated version of its search API from time to time (a single result with more pages behind it, or stubs with no listing inside); when that happens the server reads the logged-out search page instead, which still carries a full first page of results.
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed. The target regional marketplace is controlled by `EBAY_MARKETPLACE_ID` (default: `EBAY_US`).
 

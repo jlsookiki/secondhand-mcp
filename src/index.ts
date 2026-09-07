@@ -76,6 +76,11 @@ const tools: Tool[] = [
           description: 'City and state for Facebook Marketplace searches, as "City, ST" — e.g. "Austin, TX", "Portland, OR". Resolve neighborhoods, ZIP codes, metro areas and "near me" to a city and state before calling; a bare city name is ambiguous and may return the wrong state. Non-US: pass city and country. Facebook only — other marketplaces ignore it.',
           default: 'san francisco'
         },
+        radiusMiles: {
+          type: 'number',
+          description: 'How far around the location to search, in miles (default 25, max 500). Facebook only. Widen it for a metro area or a rural town.',
+          default: 25
+        },
         maxPrice: {
           type: 'number',
           description: 'Maximum price filter (optional)'
@@ -267,6 +272,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         query: string;
         marketplace?: string;
         location?: string;
+        radiusMiles?: number;
         maxPrice?: number;
         minPrice?: number;
         limit?: number;
@@ -292,6 +298,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const searchParams: SearchParams = {
         query: params.query,
         location: params.location || 'san francisco',
+        radius: params.radiusMiles,
         maxPrice: params.maxPrice,
         minPrice: params.minPrice,
         limit: params.limit || 20,
