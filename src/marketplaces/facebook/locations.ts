@@ -8,6 +8,9 @@ const CITY_PAGE_CACHE_MAX = 200;
 const CITY_PAGE_MAX_MILES = 50;
 const EARTH_RADIUS_MILES = 3958.8;
 
+/** Facebook could not be asked where a place is; says nothing about the place itself. */
+export class LocationLookupError extends Error {}
+
 export class LocationResolver {
   private coordsCache: Map<string, LocationCoordinates> = new Map();
   private cityPageIdCache: Map<string, string> = new Map();
@@ -18,8 +21,12 @@ export class LocationResolver {
 
     const primaryKey = query.toLowerCase().trim();
 
+    // A failed lookup ends the search: a looser spelling of the same place,
+    // like the bare city name, can land on a same-named town elsewhere.
     for (const candidate of lookupCandidates(query)) {
-      const coords = await this.coordinatesExact(candidate);
+      const coords = await this.coordinatesExact(candidate).catch((error) => {
+        throw lookupFailed(query, error);
+      });
       if (coords) {
         if (candidate !== primaryKey) this.coordsCache.set(primaryKey, coords);
         return coords;
@@ -53,35 +60,28 @@ export class LocationResolver {
   }
 
   private async coordinatesExact(cacheKey: string): Promise<LocationCoordinates | null> {
-    if (this.coordsCache.has(cacheKey)) {
-      return this.coordsCache.get(cacheKey)!;
-    }
+    const cached = this.coordsCache.get(cacheKey);
+    if (cached) return cached;
 
-    try {
-      const places = await placesMatching(cacheKey);
-      if (places.length === 0) return null;
-
-      // Results are ranked by check-ins, so "phoenix" leads with a venue in
-      // South Africa and "sacramento" with a street in Portugal. Only real
-      // places carry the bare "City" subtitle.
-      const node = places.find(isCity) ?? places[0];
-      if (!node.location) return null;
-      const name = isCity(node)
-        ? node.single_line_address
-        : subtitleKind(node) || node.single_line_address;
-
-      const coords: LocationCoordinates = {
-        latitude: node.location.latitude,
-        longitude: node.location.longitude,
-        name: name ?? '',
-      };
-
-      this.coordsCache.set(cacheKey, coords);
-      return coords;
-    } catch {
-      return null;
-    }
+    const coords = placeCoordinates(await placesMatching(cacheKey));
+    if (coords) this.coordsCache.set(cacheKey, coords);
+    return coords;
   }
+}
+
+function lookupFailed(location: string, error: unknown): LocationLookupError {
+  const reason = error instanceof Error ? error.message : String(error);
+  return new LocationLookupError(`Couldn't look up "${location}" on Facebook: ${reason}`, { cause: error });
+}
+
+// Results are ranked by check-ins, so "phoenix" leads with a venue in South
+// Africa and "sacramento" with a street in Portugal. Only real places carry
+// the bare "City" subtitle.
+function placeCoordinates(places: PlaceNode[]): LocationCoordinates | null {
+  const node = places.find(isCity) ?? places[0];
+  if (!node?.location) return null;
+  const name = isCity(node) ? node.single_line_address : subtitleKind(node) || node.single_line_address;
+  return { latitude: node.location.latitude, longitude: node.location.longitude, name: name ?? '' };
 }
 
 // Place names repeat across states, so "montclair" alone ranks Montclair,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FacebookMarketplace } from '../src/marketplaces/facebook/index.js';
-import { LocationResolver } from '../src/marketplaces/facebook/locations.js';
+import { LocationLookupError, LocationResolver } from '../src/marketplaces/facebook/locations.js';
 import type { SearchParams } from '../src/types.js';
 
 // The Facebook transport builds a ProxyAgent from SMARTPROXY_URL at module evaluation.
@@ -180,7 +180,7 @@ describe('location resolution', () => {
     const result = await search({ location: 'atlantis' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('atlantis');
+    expect(result.error).toContain('Could not find location "atlantis"');
     expect(result.listings).toEqual([]);
     expect(calls.map((c) => c.docId)).toEqual([LOCATION_DOC_ID]);
   });
@@ -887,10 +887,51 @@ describe('FacebookMarketplace resilience', () => {
     expect(result.listings.map((l) => l.id)).toEqual(['1', '3']);
   });
 
-  it('returns no coordinates when the location lookup itself throws', async () => {
+  it('reports a location lookup that failed as a failure, not as an unknown place', async () => {
     stubFetch(() => { throw new Error('socket hung up'); });
     // Non-US so it does not short-circuit on the offline table.
-    const coords = await new FacebookMarketplace().getLocation('reykjavik iceland');
-    expect(coords).toBeNull();
+    await expect(new FacebookMarketplace().getLocation('Reykjavik Iceland')).rejects.toThrow(
+      new LocationLookupError('Couldn\'t look up "Reykjavik Iceland" on Facebook: socket hung up')
+    );
+  });
+
+  it('tells a search that the location lookup failed rather than that the place is unknown', async () => {
+    stubFetch(() => new Response(null, { status: 403 }));
+
+    const result = await new FacebookMarketplace().search({ query: 'samsung', location: 'Santiago, Chile' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Couldn\'t look up "Santiago, Chile" on Facebook: Facebook API returned status 403');
+  });
+
+  it('stops at a failed lookup instead of trying a looser spelling that may name another town', async () => {
+    let lookups = 0;
+    const { calls } = stubFetch((req) => {
+      if (req.docId !== LOCATION_DOC_ID) return json(searchBody([item()]));
+      return ++lookups === 1
+        ? new Response(null, { status: 403 })
+        : json(locationBody([locationEdge('City · California', 'Zqxville, CA', 34.1, -117.7)]));
+    });
+
+    const result = await new FacebookMarketplace().search({ query: 'bike', location: 'Zqxville, NJ' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Couldn\'t look up "Zqxville, NJ" on Facebook: Facebook API returned status 403');
+    expect(calls.filter((c) => c.docId === LOCATION_DOC_ID)).toHaveLength(1);
+  });
+
+  it('looks a location up again after a lookup that failed', async () => {
+    let failing = true;
+    stubFetch(() =>
+      failing
+        ? new Response(null, { status: 403 })
+        : json(locationBody([locationEdge('City · Iceland', 'Reykjavík, Iceland', 64.15, -21.94)]))
+    );
+    const facebook = new FacebookMarketplace();
+
+    await expect(facebook.getLocation('reykjavik iceland')).rejects.toThrow();
+    failing = false;
+
+    expect((await facebook.getLocation('reykjavik iceland'))?.latitude).toBe(64.15);
   });
 });
