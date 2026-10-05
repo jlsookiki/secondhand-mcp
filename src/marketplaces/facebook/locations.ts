@@ -53,35 +53,33 @@ export class LocationResolver {
   }
 
   private async coordinatesExact(cacheKey: string): Promise<LocationCoordinates | null> {
-    if (this.coordsCache.has(cacheKey)) {
-      return this.coordsCache.get(cacheKey)!;
-    }
+    const cached = this.coordsCache.get(cacheKey);
+    if (cached) return cached;
 
-    try {
-      const places = await placesMatching(cacheKey);
-      if (places.length === 0) return null;
-
-      // Results are ranked by check-ins, so "phoenix" leads with a venue in
-      // South Africa and "sacramento" with a street in Portugal. Only real
-      // places carry the bare "City" subtitle.
-      const node = places.find(isCity) ?? places[0];
-      if (!node.location) return null;
-      const name = isCity(node)
-        ? node.single_line_address
-        : subtitleKind(node) || node.single_line_address;
-
-      const coords: LocationCoordinates = {
-        latitude: node.location.latitude,
-        longitude: node.location.longitude,
-        name: name ?? '',
-      };
-
-      this.coordsCache.set(cacheKey, coords);
-      return coords;
-    } catch {
-      return null;
-    }
+    const coords = placeCoordinates(await lookUp(cacheKey));
+    if (coords) this.coordsCache.set(cacheKey, coords);
+    return coords;
   }
+}
+
+/** Facebook's places for a query. A lookup that fails is an error, never "no such place". */
+async function lookUp(query: string): Promise<PlaceNode[]> {
+  try {
+    return await placesMatching(query);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Looking up "${query}" on Facebook failed: ${reason}`, { cause: error });
+  }
+}
+
+// Results are ranked by check-ins, so "phoenix" leads with a venue in South
+// Africa and "sacramento" with a street in Portugal. Only real places carry
+// the bare "City" subtitle.
+function placeCoordinates(places: PlaceNode[]): LocationCoordinates | null {
+  const node = places.find(isCity) ?? places[0];
+  if (!node?.location) return null;
+  const name = isCity(node) ? node.single_line_address : subtitleKind(node) || node.single_line_address;
+  return { latitude: node.location.latitude, longitude: node.location.longitude, name: name ?? '' };
 }
 
 // Place names repeat across states, so "montclair" alone ranks Montclair,

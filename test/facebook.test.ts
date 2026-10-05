@@ -180,7 +180,7 @@ describe('location resolution', () => {
     const result = await search({ location: 'atlantis' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('atlantis');
+    expect(result.error).toContain('Could not find location "atlantis"');
     expect(result.listings).toEqual([]);
     expect(calls.map((c) => c.docId)).toEqual([LOCATION_DOC_ID]);
   });
@@ -887,10 +887,36 @@ describe('FacebookMarketplace resilience', () => {
     expect(result.listings.map((l) => l.id)).toEqual(['1', '3']);
   });
 
-  it('returns no coordinates when the location lookup itself throws', async () => {
+  it('reports a location lookup that failed as a failure, not as an unknown place', async () => {
     stubFetch(() => { throw new Error('socket hung up'); });
     // Non-US so it does not short-circuit on the offline table.
-    const coords = await new FacebookMarketplace().getLocation('reykjavik iceland');
-    expect(coords).toBeNull();
+    await expect(new FacebookMarketplace().getLocation('reykjavik iceland')).rejects.toThrow(
+      'Looking up "reykjavik iceland" on Facebook failed: socket hung up'
+    );
+  });
+
+  it('tells a search that the location lookup failed rather than that the place is unknown', async () => {
+    stubFetch(() => new Response(null, { status: 403 }));
+
+    const result = await new FacebookMarketplace().search({ query: 'samsung', location: 'Santiago, Chile' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Looking up "santiago, chile" on Facebook failed: Facebook API returned status 403');
+    expect(result.error).not.toContain('Could not find location');
+  });
+
+  it('looks a location up again after a lookup that failed', async () => {
+    let failing = true;
+    stubFetch(() =>
+      failing
+        ? new Response(null, { status: 403 })
+        : json(locationBody([locationEdge('City · Iceland', 'Reykjavík, Iceland', 64.15, -21.94)]))
+    );
+    const facebook = new FacebookMarketplace();
+
+    await expect(facebook.getLocation('reykjavik iceland')).rejects.toThrow();
+    failing = false;
+
+    expect((await facebook.getLocation('reykjavik iceland'))?.latitude).toBe(64.15);
   });
 });
