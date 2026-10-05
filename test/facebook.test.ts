@@ -904,6 +904,22 @@ describe('FacebookMarketplace resilience', () => {
     expect(result.error).toBe('Couldn\'t look up "Santiago, Chile" on Facebook: Facebook API returned status 403');
   });
 
+  it('stops at a failed lookup instead of trying a looser spelling that may name another town', async () => {
+    let lookups = 0;
+    const { calls } = stubFetch((req) => {
+      if (req.docId !== LOCATION_DOC_ID) return json(searchBody([item()]));
+      return ++lookups === 1
+        ? new Response(null, { status: 403 })
+        : json(locationBody([locationEdge('City · California', 'Zqxville, CA', 34.1, -117.7)]));
+    });
+
+    const result = await new FacebookMarketplace().search({ query: 'bike', location: 'Zqxville, NJ' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Couldn\'t look up "Zqxville, NJ" on Facebook: Facebook API returned status 403');
+    expect(calls.filter((c) => c.docId === LOCATION_DOC_ID)).toHaveLength(1);
+  });
+
   it('looks a location up again after a lookup that failed', async () => {
     let failing = true;
     stubFetch(() =>

@@ -21,6 +21,8 @@ export class LocationResolver {
 
     const primaryKey = query.toLowerCase().trim();
 
+    // A failed lookup ends the search: a looser spelling of the same place,
+    // like the bare city name, can land on a same-named town elsewhere.
     for (const candidate of lookupCandidates(query)) {
       const coords = await this.coordinatesExact(candidate).catch((error) => {
         throw lookupFailed(query, error);
