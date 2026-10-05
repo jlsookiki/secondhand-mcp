@@ -19,20 +19,11 @@ export class LocationResolver {
     const local = lookupUsCity(query);
     if (local) return local;
 
-    const primaryKey = query.toLowerCase().trim();
-
-    // A failed lookup ends the search: a looser spelling of the same place,
-    // like the bare city name, can land on a same-named town elsewhere.
-    for (const candidate of lookupCandidates(query)) {
-      const coords = await this.coordinatesExact(candidate).catch((error) => {
-        throw lookupFailed(query, error);
-      });
-      if (coords) {
-        if (candidate !== primaryKey) this.coordsCache.set(primaryKey, coords);
-        return coords;
-      }
+    try {
+      return await this.firstSpellingFound(query);
+    } catch (error) {
+      throw lookupFailed(query, error);
     }
-    return null;
   }
 
   /** The Marketplace city page for a location, only ever one near `near`. */
@@ -59,12 +50,26 @@ export class LocationResolver {
     }
   }
 
-  private async coordinatesExact(cacheKey: string): Promise<LocationCoordinates | null> {
-    const cached = this.coordsCache.get(cacheKey);
+  /** Tries each spelling in turn and stops at the first failure: a looser
+   *  spelling, like the bare city name, can land on a same-named town elsewhere. */
+  private async firstSpellingFound(query: string): Promise<LocationCoordinates | null> {
+    const typedKey = query.toLowerCase().trim();
+    for (const candidate of lookupCandidates(query)) {
+      const coords = await this.coordinatesFor(candidate);
+      if (coords) {
+        if (candidate !== typedKey) this.coordsCache.set(typedKey, coords);
+        return coords;
+      }
+    }
+    return null;
+  }
+
+  private async coordinatesFor(candidate: string): Promise<LocationCoordinates | null> {
+    const cached = this.coordsCache.get(candidate);
     if (cached) return cached;
 
-    const coords = placeCoordinates(await placesMatching(cacheKey));
-    if (coords) this.coordsCache.set(cacheKey, coords);
+    const coords = placeCoordinates(await placesMatching(candidate));
+    if (coords) this.coordsCache.set(candidate, coords);
     return coords;
   }
 }
@@ -80,8 +85,13 @@ function lookupFailed(location: string, error: unknown): LocationLookupError {
 function placeCoordinates(places: PlaceNode[]): LocationCoordinates | null {
   const node = places.find(isCity) ?? places[0];
   if (!node?.location) return null;
+  return { latitude: node.location.latitude, longitude: node.location.longitude, name: placeName(node) };
+}
+
+/** A city reads as its address ("Reykjavík, Iceland"); anything else by its kind. */
+function placeName(node: PlaceNode): string {
   const name = isCity(node) ? node.single_line_address : subtitleKind(node) || node.single_line_address;
-  return { latitude: node.location.latitude, longitude: node.location.longitude, name: name ?? '' };
+  return name ?? '';
 }
 
 // Place names repeat across states, so "montclair" alone ranks Montclair,
