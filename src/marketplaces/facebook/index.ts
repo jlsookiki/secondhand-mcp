@@ -16,7 +16,7 @@
 import { BaseMarketplace } from '../base.js';
 import { Listing, SearchParams, SearchResult, ListingDetails, LocationCoordinates } from '../../types.js';
 import { getListingDetails } from './details.js';
-import { LocationResolver } from './locations.js';
+import { LocationLookupError, LocationResolver } from './locations.js';
 import { extractFeedUnitEdges, pageAnswered, parseListings, readFeedUnits } from './parse.js';
 import {
   API_PAGE_SIZE,
@@ -80,6 +80,7 @@ export class FacebookMarketplace extends BaseMarketplace {
       this.remember(cacheKey, result);
       return result;
     } catch (error) {
+      if (error instanceof LocationLookupError) return this.createError(error.message);
       return this.createError(`Facebook Marketplace search failed: ${error}`);
     }
   }

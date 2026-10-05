@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FacebookMarketplace } from '../src/marketplaces/facebook/index.js';
-import { LocationResolver } from '../src/marketplaces/facebook/locations.js';
+import { LocationLookupError, LocationResolver } from '../src/marketplaces/facebook/locations.js';
 import type { SearchParams } from '../src/types.js';
 
 // The Facebook transport builds a ProxyAgent from SMARTPROXY_URL at module evaluation.
@@ -890,8 +890,8 @@ describe('FacebookMarketplace resilience', () => {
   it('reports a location lookup that failed as a failure, not as an unknown place', async () => {
     stubFetch(() => { throw new Error('socket hung up'); });
     // Non-US so it does not short-circuit on the offline table.
-    await expect(new FacebookMarketplace().getLocation('reykjavik iceland')).rejects.toThrow(
-      'Looking up "reykjavik iceland" on Facebook failed: socket hung up'
+    await expect(new FacebookMarketplace().getLocation('Reykjavik Iceland')).rejects.toThrow(
+      new LocationLookupError('Couldn\'t look up "Reykjavik Iceland" on Facebook: socket hung up')
     );
   });
 
@@ -901,8 +901,7 @@ describe('FacebookMarketplace resilience', () => {
     const result = await new FacebookMarketplace().search({ query: 'samsung', location: 'Santiago, Chile' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Looking up "santiago, chile" on Facebook failed: Facebook API returned status 403');
-    expect(result.error).not.toContain('Could not find location');
+    expect(result.error).toBe('Couldn\'t look up "Santiago, Chile" on Facebook: Facebook API returned status 403');
   });
 
   it('looks a location up again after a lookup that failed', async () => {

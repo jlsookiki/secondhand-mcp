@@ -8,6 +8,9 @@ const CITY_PAGE_CACHE_MAX = 200;
 const CITY_PAGE_MAX_MILES = 50;
 const EARTH_RADIUS_MILES = 3958.8;
 
+/** Facebook could not be asked where a place is; says nothing about the place itself. */
+export class LocationLookupError extends Error {}
+
 export class LocationResolver {
   private coordsCache: Map<string, LocationCoordinates> = new Map();
   private cityPageIdCache: Map<string, string> = new Map();
@@ -19,7 +22,9 @@ export class LocationResolver {
     const primaryKey = query.toLowerCase().trim();
 
     for (const candidate of lookupCandidates(query)) {
-      const coords = await this.coordinatesExact(candidate);
+      const coords = await this.coordinatesExact(candidate).catch((error) => {
+        throw lookupFailed(query, error);
+      });
       if (coords) {
         if (candidate !== primaryKey) this.coordsCache.set(primaryKey, coords);
         return coords;
@@ -56,20 +61,15 @@ export class LocationResolver {
     const cached = this.coordsCache.get(cacheKey);
     if (cached) return cached;
 
-    const coords = placeCoordinates(await lookUp(cacheKey));
+    const coords = placeCoordinates(await placesMatching(cacheKey));
     if (coords) this.coordsCache.set(cacheKey, coords);
     return coords;
   }
 }
 
-/** Facebook's places for a query. A lookup that fails is an error, never "no such place". */
-async function lookUp(query: string): Promise<PlaceNode[]> {
-  try {
-    return await placesMatching(query);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Looking up "${query}" on Facebook failed: ${reason}`, { cause: error });
-  }
+function lookupFailed(location: string, error: unknown): LocationLookupError {
+  const reason = error instanceof Error ? error.message : String(error);
+  return new LocationLookupError(`Couldn't look up "${location}" on Facebook: ${reason}`, { cause: error });
 }
 
 // Results are ranked by check-ins, so "phoenix" leads with a venue in South
