@@ -20,7 +20,7 @@ export class LocationResolver {
     if (local) return local;
 
     try {
-      return await this.firstSpellingFound(query);
+      return await this.firstSpellingCoordinates(query);
     } catch (error) {
       throw lookupFailed(query, error);
     }
@@ -28,7 +28,7 @@ export class LocationResolver {
 
   /** The Marketplace city page for a location, only ever one near `near`. */
   async cityPageId(location: string, near: LocationCoordinates): Promise<string | null> {
-    const key = location.toLowerCase().trim();
+    const key = asTyped(location);
     const cached = this.cityPageIdCache.get(key);
     if (cached) return cached;
 
@@ -52,8 +52,8 @@ export class LocationResolver {
 
   /** Tries each spelling in turn and stops at the first failure: a looser
    *  spelling, like the bare city name, can land on a same-named town elsewhere. */
-  private async firstSpellingFound(query: string): Promise<LocationCoordinates | null> {
-    const typedKey = query.toLowerCase().trim();
+  private async firstSpellingCoordinates(query: string): Promise<LocationCoordinates | null> {
+    const typedKey = asTyped(query);
     for (const candidate of lookupCandidates(query)) {
       const coords = await this.coordinatesFor(candidate);
       if (coords) {
@@ -80,8 +80,7 @@ function lookupFailed(location: string, error: unknown): LocationLookupError {
 }
 
 // Results are ranked by check-ins, so "phoenix" leads with a venue in South
-// Africa and "sacramento" with a street in Portugal. Only real places carry
-// the bare "City" subtitle.
+// Africa and "sacramento" with a street in Portugal.
 function placeCoordinates(places: PlaceNode[]): LocationCoordinates | null {
   const node = places.find(isCity) ?? places[0];
   if (!node?.location) return null;
@@ -128,7 +127,7 @@ async function placesMatching(query: string): Promise<PlaceNode[]> {
  * bare city name is a last resort because "austin" is Austin, Illinois.
  */
 export function lookupCandidates(query: string): string[] {
-  const typed = query.toLowerCase().trim();
+  const typed = asTyped(query);
   const parts = typed.split(',').map((part) => part.trim());
   const city = parts[0];
   const state = parts.length > 1 ? stateNameForCode(parts[parts.length - 1]) : undefined;
@@ -136,10 +135,16 @@ export function lookupCandidates(query: string): string[] {
   return [...new Set([preferred, city].filter(Boolean))];
 }
 
+/** A location as typed, the form both caches are keyed by. */
+function asTyped(location: string): string {
+  return location.toLowerCase().trim();
+}
+
 function subtitleKind(node: PlaceNode): string | undefined {
   return node.subtitle?.split(' ·')[0];
 }
 
+/** Only real places carry the bare "City" subtitle; venues and streets carry their kind. */
 function isCity(node: PlaceNode): boolean {
   return subtitleKind(node) === 'City';
 }
