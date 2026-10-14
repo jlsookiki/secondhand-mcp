@@ -79,19 +79,28 @@ describe('initializeMarketplaces', () => {
     const registry = await loadRegistry();
     registry.initializeMarketplaces();
 
-    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'depop', 'poshmark']);
+    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'depop', 'poshmark', 'playitagain']);
     expect(registry.getAllMarketplaces().map((m) => m.displayName)).toEqual([
       'Facebook Marketplace',
       'eBay',
       'Depop',
       'Poshmark',
+      'Play It Again Sports',
     ]);
     expect(registry.getAllMarketplaces().map((m) => m.requiresAuth)).toEqual([
       false,
       true,
       false,
       false,
+      false,
     ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('enables Play It Again Sports without browser or credentials', async () => {
+    const registry = await loadRegistry({ marketplaces: 'playitagain', chrome: null, ebayCreds: false });
+    registry.initializeMarketplaces();
+    expect(registry.getMarketplace('playitagain')).toBeInstanceOf(registry.PlayItAgainMarketplace);
     expect(warnings).toEqual([]);
   });
 
@@ -125,7 +134,7 @@ describe('initializeMarketplaces', () => {
     const registry = await loadRegistry({ chrome: null });
     registry.initializeMarketplaces();
 
-    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay']);
+    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'playitagain']);
     expect(warnings.filter((w) => w.includes('Chrome/Chromium not found'))).toHaveLength(2);
   });
 
@@ -189,7 +198,7 @@ describe('registerMarketplace', () => {
     const replacement = stub('ebay');
     registry.registerMarketplace(replacement);
 
-    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'depop', 'poshmark']);
+    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'depop', 'poshmark', 'playitagain']);
     expect(registry.getMarketplace('ebay')).toBe(replacement);
     expect(registry.getAllMarketplaces()[1]).toBe(replacement);
   });

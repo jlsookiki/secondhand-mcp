@@ -7,6 +7,7 @@ import { FacebookMarketplace } from './facebook/index.js';
 import { EbayMarketplace } from './ebay/index.js';
 import { DepopMarketplace } from './depop.js';
 import { PoshmarkMarketplace } from './poshmark.js';
+import { PlayItAgainMarketplace } from './playitagain.js';
 import { findChrome } from '../browser.js';
 
 export { Marketplace, BaseMarketplace } from './base.js';
@@ -14,6 +15,8 @@ export { FacebookMarketplace } from './facebook/index.js';
 export { EbayMarketplace, resizeEbayImageUrl } from './ebay/index.js';
 export { DepopMarketplace } from './depop.js';
 export { PoshmarkMarketplace } from './poshmark.js';
+
+export { PlayItAgainMarketplace } from './playitagain.js';
 
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();
@@ -24,6 +27,7 @@ const allMarketplaces: Record<string, () => Marketplace> = {
   ebay: () => new EbayMarketplace(),
   depop: () => new DepopMarketplace(),
   poshmark: () => new PoshmarkMarketplace(),
+  playitagain: () => new PlayItAgainMarketplace(),
 };
 
 // Register marketplaces based on MARKETPLACES env var (comma-separated).

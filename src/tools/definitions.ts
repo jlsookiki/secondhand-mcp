@@ -18,7 +18,7 @@ type AnnotatedTool = Tool & {
 export const tools: AnnotatedTool[] = [
   {
     name: 'search_marketplace',
-    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
+    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; Play It Again Sports needs no credentials or browser and searches online store inventory. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Play It Again Sports reports store-native USD/CAD, uses USD-only price bounds, and marks starting prices for products with selectable options. Not for: buying, messaging sellers, or saved searches.`,
     annotations: { title: 'Search Marketplace', ...READ_ONLY },
     inputSchema: {
       type: 'object',
@@ -44,20 +44,20 @@ export const tools: AnnotatedTool[] = [
         },
         maxPrice: {
           type: 'number',
-          description: 'Maximum price filter (optional)'
+          description: 'Maximum price filter (optional). Play It Again Sports: USD-only; Canadian stores are excluded, and option listings show starting prices.'
         },
         minPrice: {
           type: 'number',
-          description: 'Minimum price filter (optional)'
+          description: 'Minimum price filter (optional). Play It Again Sports: USD-only; Canadian stores are excluded.'
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results to return (default: 20). eBay paginates automatically to fetch more than 200 (eBay caps offset + limit at 10,000).',
+          description: 'Maximum number of results to return (default: 20). Play It Again Sports: up to 120, with ten-page inspection budget. eBay paginates automatically to fetch more than 200 (eBay caps offset + limit at 10,000).',
           default: 20
         },
         offset: {
           type: 'number',
-          description: 'Starting result offset for pagination (default: 0). eBay only; other marketplaces ignore it.',
+          description: 'Starting result offset for pagination (default: 0). eBay and Play It Again Sports. Play It Again Sports counts matched listings after filtering, caps offset at 120, and inspects at most ten pages.',
           default: 0
         },
         showSold: {
@@ -72,16 +72,16 @@ export const tools: AnnotatedTool[] = [
         },
         sort: {
           type: 'string',
-          description: 'Sort order (Depop, Poshmark). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
+          description: 'Sort order (Depop, Poshmark, Play It Again Sports). Play It Again Sports does not support most_popular; prices sort by nominal amounts without currency conversion. Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
           default: 'relevance'
         },
         condition: {
           type: 'string',
-          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Use "any" for no filter.',
+          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Play It Again Sports: new, used, any; finer grades are unsupported. Use "any" for no filter.',
         },
         category: {
           type: 'string',
-          description: 'Product category. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
+          description: 'Product category. Play It Again Sports: exact structured category path, case-insensitive (e.g. "Goalie/Goalie Helmets and Masks"). Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
         },
         brand: {
           type: 'string',
