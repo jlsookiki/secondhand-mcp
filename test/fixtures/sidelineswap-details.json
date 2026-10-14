@@ -1,0 +1,177 @@
+{
+  "data": {
+    "id": 12549997,
+    "state": "sold",
+    "name": "Senior Medium Bauer 950 Goalie Mask (Used)",
+    "price": 221.7,
+    "condition_detail": {
+      "id": 17,
+      "type": "condition",
+      "title_name": "(Used)",
+      "slug": "used",
+      "name": "Used"
+    },
+    "url": "https://sidelineswap.com/gear/hockey/goalie/goalie-masks/12549997-bauer-senior-medium-950-goalie-mask-used",
+    "description": "This is a used Bauer 950 Senior Medium goalie mask designed for adult goaltenders with a medium head size. The mask balances protection and comfort, featuring a solid shell construction intended to absorb impacts during play. It comes in a white color, offering a simple and classic appearance. While the mask has been previously used, it continues to provide the protection expected from this model. It is a retail version, not pro stock, and sized specifically to fit senior-level players.",
+    "details": [
+      {
+        "type": "detail",
+        "slug": "condition",
+        "name": "Condition",
+        "values": [
+          {
+            "id": 17,
+            "type": "condition",
+            "title_name": "(Used)",
+            "slug": "used",
+            "name": "Used"
+          }
+        ]
+      },
+      {
+        "type": "detail",
+        "slug": "size",
+        "name": "Size",
+        "values": [
+          {
+            "id": 22,
+            "type": "size",
+            "title_name": "Medium",
+            "slug": "medium",
+            "name": "Medium"
+          }
+        ]
+      },
+      {
+        "type": "detail",
+        "slug": "choose-pro-stock",
+        "name": "Pro Stock",
+        "values": [
+          {
+            "id": 23031,
+            "type": "choose-pro-stock",
+            "title_name": "{BLANK}",
+            "slug": "not-pro-stock",
+            "name": "Retail"
+          }
+        ]
+      },
+      {
+        "type": "detail",
+        "slug": "color",
+        "name": "Color",
+        "values": [
+          {
+            "id": 22293,
+            "type": "color",
+            "url": "https://sidelineswap.com/shop/hockey/goalie/goalie-masks/white/l53372",
+            "destination_lander_name": "White Hockey Goalie Masks",
+            "title_name": "White",
+            "slug": "white",
+            "name": "White"
+          }
+        ]
+      },
+      {
+        "type": "detail",
+        "slug": "age-group",
+        "name": "Age Group",
+        "values": [
+          {
+            "id": 23077,
+            "type": "age-group",
+            "url": "https://sidelineswap.com/shop/hockey/goalie/goalie-masks/age-senior/l66257",
+            "destination_lander_name": "Senior Hockey Goalie Masks",
+            "title_name": "Senior",
+            "slug": "age-senior",
+            "name": "Senior"
+          }
+        ]
+      },
+      {
+        "type": "detail",
+        "slug": "brand",
+        "name": "Brand",
+        "values": [
+          {
+            "id": 68,
+            "type": "brand",
+            "url": "https://sidelineswap.com/shop/hockey/goalie/goalie-masks/bauer/l14445",
+            "destination_lander_name": "Bauer Hockey Goalie Masks",
+            "slug": "bauer",
+            "name": "Bauer"
+          }
+        ]
+      }
+    ],
+    "images": [
+      {
+        "id": 96178854,
+        "thumb_url": "https://images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/096/178/854/dc76fe77c7a97fbc_original.jpeg"
+      },
+      {
+        "id": 96178855,
+        "thumb_url": "https://images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/096/178/855/d7e850327aaa862b_original.jpeg"
+      },
+      {
+        "id": 96178856,
+        "thumb_url": "https://images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/096/178/856/7aa5f44271f2738d_original.jpeg"
+      }
+    ],
+    "seller": {
+      "username": "fixture_seller"
+    },
+    "model": {
+      "id": 268521,
+      "slug": "model-950-s25",
+      "name": "950",
+      "display_name": "Bauer 950 Goalie Mask",
+      "query": {
+        "model": [
+          268521
+        ],
+        "category": [
+          110030
+        ],
+        "brand": [
+          68
+        ]
+      },
+      "description": null,
+      "brand_id": 68,
+      "brand_name": "Bauer",
+      "gtin": null,
+      "mpn": null,
+      "expert_pick": false,
+      "category_id": 110030,
+      "category_name": "Goalie Masks",
+      "root_category_id": "2000",
+      "root_category_name": "Hockey",
+      "available_count": 5,
+      "sold_count": 67,
+      "popular": false,
+      "seller_count": 5,
+      "position": null,
+      "price_retail": null,
+      "price_min": 60.0,
+      "price_max": 600.0,
+      "url": "https://sidelineswap.com/shop/hockey/goalie/goalie-masks/bauer/model-950-s25/l475816",
+      "superlative_label": null
+    }
+  }
+}

@@ -3,7 +3,7 @@
 
 # Secondhand MCP
 
-A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, and Poshmark for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, Poshmark, and SidelineSwap for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
 
 Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP servers locally.
 
@@ -28,6 +28,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | eBay | Yes (API keys) | Official Browse API |
 | Depop | No | Requires Chrome installed |
 | Poshmark | No | Requires Chrome installed |
+| SidelineSwap | No | Public storefront JSON; no browser required |
 
 ## Setup
 
@@ -83,6 +84,27 @@ The browser runs invisibly in the background and only launches when you actually
 
 ## Configuration
 
+### SidelineSwap
+
+Enable with `MARKETPLACES=sidelineswap`, or include it in a comma-separated list. No API key, login, browser, or proxy is required. Search uses the public storefront's JSON endpoints, which are undocumented and may change or block access. Failures are reported explicitly.
+
+```json
+{
+  "query": "bauer 950",
+  "marketplace": "sidelineswap",
+  "category": "110030",
+  "condition": "used",
+  "maxPrice": 500,
+  "limit": 40
+}
+```
+
+Prices and bounds are **USD asking prices**, excluding shipping, fees, and tax. Available listings are searched by default; `showSold:true` also includes sold listings, marked `[Sold]` in search titles. Details recheck the current availability, preserve seller attributes (size, age group, model, etc.), and return original-size photos when provided. These attributes are seller claims, not verification of age, fit, or condition. Shipping availability/costs are not inferred.
+
+Supported filters: price bounds, `new`/`used`/`any` condition, and numeric category IDs. Sorts: relevance, newest, price ascending, price descending. Brand, department, size, color, granular condition, and popularity filters return errors; include descriptive terms in the query and verify the details instead. Location/radius are Facebook-only and do not limit SidelineSwap inventory.
+
+Pagination uses result offsets (0–5000) and returns up to 500 listings, with a maximum of 10 requests and a 45-second overall deadline per call. Incomplete results, later-page failures, skipped malformed rows, and truncated counts are disclosed in the result note; do not treat a bounded search as exhaustive. Offsets follow the storefront order; inventory may change between calls.
+
 ### Choosing Marketplaces
 
 By default all marketplaces are enabled. To limit which are active, set the `MARKETPLACES` env var (comma-separated):
@@ -95,7 +117,7 @@ By default all marketplaces are enabled. To limit which are active, set the `MAR
 }
 ```
 
-Valid values: `facebook`, `ebay`, `depop`, `poshmark`
+Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`
 
 ### eBay API Keys
 
@@ -141,17 +163,18 @@ Search for items across marketplaces.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `all` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
-| `limit` | No | `20` | Max results |
-| `showSold` | No | `false` | Include sold items (Facebook only) |
+| `limit` | No | `20` | Max results; SidelineSwap max 500, at most 10 pages per call |
+| `offset` | No | `0` | Starting result offset (eBay, SidelineSwap); SidelineSwap max 5000 |
+| `showSold` | No | `false` | Include sold items (Facebook, SidelineSwap) |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair` |
-| `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
+| `sort` | No | `relevance` | Sort order (Depop, Poshmark; SidelineSwap supports all except `most_popular`): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap: `new`, `used`, `any` |
+| `category` | No | | Product category. SidelineSwap: numeric category ID (e.g. `110030` for goalie masks). Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark only): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
 | `sizes` | No | | Size filter (Depop, Poshmark): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
@@ -175,7 +198,7 @@ Get full details for a specific listing using an ID from search results.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, or `poshmark` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `sidelineswap` |
 
 **Data returned per marketplace:**
 
@@ -232,6 +255,7 @@ npm run build
 - **eBay**: Requires developer API keys (free tier available)
 - **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search)
 - **Poshmark**: Requires Chrome/Chromium installed; no official API so relies on page scraping
+- **SidelineSwap**: Undocumented public storefront endpoints; bounded pagination, USD asking prices, no manufacture-date inference.
 - **Rate limiting**: Don't make too many requests too quickly
 
 ## License

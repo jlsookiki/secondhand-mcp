@@ -1,0 +1,152 @@
+{
+  "data": [
+    {
+      "id": 13057861,
+      "state": "available",
+      "name": "Junior Bauer NME 4 Goalie Mask (Used)",
+      "category_1": "hockey",
+      "category_2": "goalie",
+      "price": 107.0,
+      "list_price": 107.0,
+      "price_retail": null,
+      "condition_detail": {
+        "id": 17,
+        "type": "condition",
+        "title_name": "(Used)",
+        "slug": "used",
+        "name": "Used"
+      },
+      "url": "https://sidelineswap.com/gear/hockey/goalie/goalie-masks/13057861-bauer-junior-nme-4-goalie-mask-used",
+      "favoriters_count": 2,
+      "favorite": null,
+      "sync_gmc": true,
+      "visit_count": 55,
+      "created_at": "2026-10-11T08:38:16.000-04:00",
+      "updated_at": "2026-10-14T04:52:08.000-04:00",
+      "label": null,
+      "sale_label": null,
+      "actions": [],
+      "categories": [],
+      "images": [],
+      "seller": {
+        "username": "fixture_seller"
+      },
+      "primary_image": {
+        "id": 98691499,
+        "thumb_url": "https://images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/098/691/499/510042c597bef092_original.jpeg"
+      }
+    },
+    {
+      "id": 12766453,
+      "state": "available",
+      "name": "Junior 2020 Bauer 940 Goalie Mask (Used)",
+      "category_1": "hockey",
+      "category_2": "goalie",
+      "price": 200.0,
+      "list_price": 200.0,
+      "price_retail": null,
+      "condition_detail": {
+        "id": 17,
+        "type": "condition",
+        "title_name": "(Used)",
+        "slug": "used",
+        "name": "Used"
+      },
+      "url": "https://sidelineswap.com/gear/hockey/goalie/goalie-masks/12766453-bauer-junior-2020-940-goalie-mask-used",
+      "favoriters_count": 3,
+      "favorite": null,
+      "sync_gmc": true,
+      "visit_count": 177,
+      "created_at": "2026-08-24T13:08:02.000-04:00",
+      "updated_at": "2026-10-14T04:52:20.000-04:00",
+      "label": null,
+      "sale_label": null,
+      "actions": [],
+      "categories": [],
+      "images": [],
+      "seller": {
+        "username": "fixture_seller"
+      },
+      "primary_image": {
+        "id": 97307349,
+        "thumb_url": "https://images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/097/307/349/1711de0dafbe6b47_original.jpeg"
+      }
+    },
+    {
+      "id": 12475475,
+      "state": "available",
+      "name": "Senior Medium Bauer 950 Goalie Mask (Used)",
+      "category_1": "hockey",
+      "category_2": "goalie",
+      "price": 270.0,
+      "list_price": 270.0,
+      "price_retail": null,
+      "condition_detail": {
+        "id": 17,
+        "type": "condition",
+        "title_name": "(Used)",
+        "slug": "used",
+        "name": "Used"
+      },
+      "url": "https://sidelineswap.com/gear/hockey/goalie/goalie-masks/12475475-bauer-senior-medium-950-goalie-mask-used",
+      "favoriters_count": 20,
+      "favorite": null,
+      "sync_gmc": false,
+      "visit_count": 380,
+      "created_at": "2026-07-06T12:07:45.000-04:00",
+      "updated_at": "2026-10-13T04:52:13.000-04:00",
+      "label": null,
+      "sale_label": null,
+      "actions": [],
+      "categories": [],
+      "images": [],
+      "seller": {
+        "username": "fixture_seller"
+      },
+      "primary_image": {
+        "id": 95770469,
+        "thumb_url": "https://images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg",
+        "mobile_thumb_url": "https://images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg",
+        "small_url": "https://images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg",
+        "large_url": "https://images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg",
+        "fastly_url": "https://edge.images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg",
+        "edge_url": "https://edge.images.sidelineswap.com/production/095/770/469/87dc372eef78732b_original.jpeg"
+      }
+    }
+  ],
+  "meta": {
+    "query": {
+      "q": "bauer 950",
+      "state": [
+        "available"
+      ],
+      "facets": {
+        "condition": [
+          17
+        ]
+      },
+      "min_price": 100.0,
+      "max_price": 500.0,
+      "sort": "price_asc"
+    },
+    "facets": [],
+    "paging": {
+      "total_count": 7,
+      "total_count_truncated": false,
+      "total_pages": 3,
+      "page_size": 50,
+      "page": 1,
+      "has_next_page": false
+    }
+  }
+}
