@@ -79,7 +79,7 @@ function toSearchParams(params: SearchMarketplaceArgs & { query: string }): Sear
     radius: params.radiusMiles,
     maxPrice: params.maxPrice,
     minPrice: params.minPrice,
-    limit: params.limit || 20,
+    limit: params.limit ?? 20,
     offset: params.offset || 0,
     showSold: params.showSold || false,
     sort: params.sort,

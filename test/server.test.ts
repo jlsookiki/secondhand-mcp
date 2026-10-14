@@ -315,10 +315,10 @@ describe('search_marketplace arguments', () => {
     });
   });
 
-  it('turns limit 0 into the default 20 while keeping offset 0', async () => {
+  it('preserves explicit limit 0 and offset 0', async () => {
     h.impl.facebook = { search: () => ok('facebook', []) };
     await call('search_marketplace', { query: 'chair', limit: 0, offset: 0 });
-    expect(h.searchCalls[0].params.limit).toBe(20);
+    expect(h.searchCalls[0].params.limit).toBe(0);
     expect(h.searchCalls[0].params.offset).toBe(0);
   });
 

@@ -3,7 +3,7 @@
 
 # Secondhand MCP
 
-A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, and Poshmark for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, Poshmark, and Geartrade for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
 
 Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP servers locally.
 
@@ -95,7 +95,7 @@ By default all marketplaces are enabled. To limit which are active, set the `MAR
 }
 ```
 
-Valid values: `facebook`, `ebay`, `depop`, `poshmark`
+Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `geartrade`
 
 ### eBay API Keys
 
@@ -141,32 +141,33 @@ Search for items across marketplaces.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `all` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `geartrade`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
-| `limit` | No | `20` | Max results |
-| `showSold` | No | `false` | Include sold items (Facebook only) |
+| `limit` | No | `20` | Max results; Geartrade 0–50 within its bounded scan |
+| `offset` | No | `0` | eBay result offset; Geartrade matching-variant offset within its bounded scan |
+| `showSold` | No | `false` | Include sold/unavailable items; Geartrade includes unavailable variants returned by its storefront, not guaranteed sold history |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair` |
-| `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
-| `brand` | No | | Brand filter (Poshmark only): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
+| `sort` | No | `relevance` | Sort order (Depop, Poshmark; Geartrade supports relevance and price sorts): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. Geartrade: `new`, `good`, `excellent`, `fair`, `used`, `any` |
+| `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings` |
+| `brand` | No | | Brand filter (Poshmark, Geartrade): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
-| `sizes` | No | | Size filter (Depop, Poshmark): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
+| `sizes` | No | | Size filter (Depop, Poshmark, Geartrade exact size labels): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
 | `colors` | No | | Color filter (Depop, Poshmark): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay | Depop | Poshmark |
-|-------|----------|------|-------|----------|
-| Title | Yes | Yes | Yes | Yes |
-| Price | Yes | Yes | Yes | Yes |
-| Location | City | City, State | — | — |
-| Condition | — | Yes | — | — |
-| Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail |
-| Seller | Yes | Yes | — | — |
+| Field | Facebook | eBay | Depop | Poshmark | Geartrade |
+|-------|----------|------|-------|----------|-----------|
+| Title | Yes | Yes | Yes | Yes | Yes |
+| Price | Yes | Yes | Yes | Yes | USD asking price |
+| Location | City | City, State | — | — | — |
+| Condition | — | Yes | — | — | Explicit source description, when present |
+| Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail | Product photos |
+| Seller | Yes | Yes | — | — | — |
 
 ### `get_listing_details`
 
@@ -175,18 +176,18 @@ Get full details for a specific listing using an ID from search results.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, or `poshmark` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `geartrade` |
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay | Depop | Poshmark |
-|-------|----------|------|-------|----------|
-| Description | Yes | Yes | Yes | Yes |
-| All photos | Yes | Yes | Yes | Yes |
-| Location | City | City, State, Country | — | — |
-| Seller | Name | Username | Username | Username |
-| Delivery types | Yes | — | — | — |
-| Shipping | Yes/No | Service codes | Yes/No | Always included |
+| Field | Facebook | eBay | Depop | Poshmark | Geartrade |
+|-------|----------|------|-------|----------|-----------|
+| Description | Yes | Yes | Yes | Yes | Yes, with variant price/stock |
+| All photos | Yes | Yes | Yes | Yes | Product photos |
+| Location | City | City, State, Country | — | — | — |
+| Seller | Name | Username | Username | Username | — |
+| Delivery types | Yes | — | — | — | — |
+| Shipping | Yes/No | Service codes | Yes/No | Always included | Requirement shown in description; delivery availability not verified |
 
 ### `list_marketplaces`
 
@@ -210,6 +211,12 @@ Useful for research-style clients that expect these standard tool names; for fil
 **Depop** — Uses a headless browser to search listings with support for category, condition, size, and color filters. The browser instance is shared across requests.
 
 **Poshmark** — Uses a headless browser to search listings with support for condition, size, color, sort, and price filters. Poshmark is not location-based — all items ship nationally.
+
+**Geartrade** — Reads public, paginated Shopify search pages and enriches candidates with product JSON. No login, API key, or browser required. The storefront currency is checked as USD on both searches and detail pages. Each call scans at most three search pages/48 products, with at most three concurrent product requests and a 45-second deadline. Relevance searches stop earlier when enough matching variants are found; price sorts scan the full bounded window before sorting and slicing. The returned coverage note is significant: results are bounded, not exhaustive, and `totalFound` is intentionally omitted.
+
+Geartrade supports keyword search, USD asking-price bounds, exact storefront brand, product type (`category`), size labels, and conditions `new`, `good`, `excellent`, `fair`, `used`, or `any`. `used` includes Good/Excellent/Fair only; Sample and UnNew With Tags are not assumed used. Brand, category, size, stock, condition, and price are rechecked against product data. Supported sorts are `relevance`, `price_low_to_high`, and `price_high_to_low` (prices sorted within the fetched candidates). `limit` is 0–50; `offset` is 0–47 and skips matching variants within the same bounded scan, so large offsets can exhaust its budget. Location/radius are not applied; unsupported department/color filters and sort/condition values return explicit errors.
+
+Each result identifies one variant as `product-handle:variantId`; details accept that ID or a bare product handle. Default searches exclude unavailable variants. `showSold` includes unavailable variants that the storefront search actually returns; unavailability does not prove a completed sale, and historical sold inventory is not guaranteed. Descriptions include the current variant price and stock state. The source shipping requirement is shown in details; delivery availability and costs must be checked on the site. Prices exclude shipping and tax; Shopify's `vendor` is not exposed as a seller. Geartrade contains both new and used outdoor equipment, and its keyword search may return loosely related items (for example, `goalie` can match clothing with “Goals” in its name). Inspect relevance and do not assume it has hockey or baseball inventory.
 
 ## Development
 
