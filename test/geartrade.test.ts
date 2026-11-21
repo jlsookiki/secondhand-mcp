@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeartradeMarketplace } from '../src/marketplaces/geartrade/index.js';
+import { GeartradeMarketplace, resultWindow } from '../src/marketplaces/geartrade/index.js';
 import { cardListing, conditionOf, listingRefFrom, productListings, searchPage } from '../src/marketplaces/geartrade/parse.js';
 import { searchUrl } from '../src/marketplaces/geartrade/query.js';
 import type { Product } from '../src/marketplaces/geartrade/wire.js';
@@ -30,11 +30,17 @@ beforeEach(() => {
 function serve(pages: (page: number) => Response) {
   fetchMock.mockImplementation((url: URL) => {
     if (url.pathname === '/search') return Promise.resolve(pages(Number(url.searchParams.get('page'))));
-    if (url.pathname === `/products/${JACKET}.js`) return Promise.resolve(json(jacket()));
+    if (url.pathname.startsWith(`/products/${JACKET}`)) return Promise.resolve(json(jacket()));
     if (url.pathname === `/products/${SKIS}.js`) return Promise.resolve(json(skis()));
     return Promise.resolve(json({}, 404));
   });
 }
+
+/** Three pages, each with its own single-variant skis and multi-variant jacket. */
+const distinctPages = (page: number) => {
+  const markup = page < 3 ? searchHtml : lastPage;
+  return html(markup.replaceAll(SKIS, `${SKIS}-${page}`).replaceAll(JACKET, `${JACKET}-${page}`));
+};
 
 const requested = () => fetchMock.mock.calls.map(([url]) => {
   const { pathname, searchParams } = url as URL;
@@ -64,6 +70,18 @@ describe('searchUrl', () => {
     const url = searchUrl({ query: 'skis', condition: 'like_new', sort: 'newest', department: 'Women', colors: ['red'], location: 'Denver, CO' }, 1);
     expect([...url.searchParams.keys()].sort()).toEqual(['page', 'q', 'sort_by', 'type']);
     expect(url.searchParams.get('sort_by')).toBe('relevance');
+  });
+});
+
+describe('resultWindow', () => {
+  it.each([
+    [{}, { start: 0, end: 20 }],
+    [{ offset: 10, limit: 10 }, { start: 10, end: 20 }],
+    [{ offset: 40, limit: 20 }, { start: 40, end: 48 }],
+    [{ offset: 60, limit: 5 }, { start: 60, end: 48 }],
+    [{ offset: -3, limit: 5 }, { start: 0, end: 5 }],
+  ])('maps %o to listing positions %o', (params, window) => {
+    expect(resultWindow(params)).toEqual(window);
   });
 });
 
@@ -191,11 +209,22 @@ describe('Geartrade search', () => {
     expect(result.listings).toHaveLength(3);
   });
 
-  it('starts at the offset', async () => {
-    serve(() => html(lastPage));
-    const result = await geartrade.search({ query: 'skis', offset: 17, limit: 1 });
-    expect(requested()).toEqual(['search page 2', `/products/${JACKET}.js`]);
-    expect(result.listings.map((l) => l.id)).toEqual([`${JACKET}:51396454285617`]);
+  it.each([1, 2, 3, 4])('pages by listings, so limit %i then the same offset equals twice the limit', async (n) => {
+    serve(distinctPages);
+    const first = await geartrade.search({ query: 'skis', limit: n });
+    const next = await geartrade.search({ query: 'skis', offset: n, limit: n });
+    const both = await geartrade.search({ query: 'skis', limit: 2 * n });
+
+    const paged = [...first.listings, ...next.listings].map((l) => l.id);
+    expect(paged).toEqual(both.listings.map((l) => l.id));
+    expect(new Set(paged).size).toBe(2 * n);
+  });
+
+  it('returns nothing past the pages it reads', async () => {
+    serve(distinctPages);
+    const result = await geartrade.search({ query: 'skis', offset: 500, limit: 5 });
+    expect(result).toMatchObject({ success: true, listings: [] });
+    expect(requested()).toEqual([]);
   });
 
   it('requests at most three search pages', async () => {

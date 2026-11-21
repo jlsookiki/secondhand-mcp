@@ -32,7 +32,7 @@ export interface SearchParams {
   radius?: number; // in miles
   condition?: Condition;
   limit?: number;
-  offset?: number; // starting result offset for pagination (eBay)
+  offset?: number; // starting result offset for pagination (eBay, Geartrade)
   showSold?: boolean;
   sort?: Sort;
   category?: string;

@@ -23,27 +23,27 @@ export class GeartradeMarketplace extends BaseMarketplace {
   readonly requiresAuth = false;
 
   async search(params: SearchParams): Promise<SearchResult> {
-    const limit = Math.min(params.limit ?? 20, MAX_RESULTS);
-    const offset = Math.max(params.offset ?? 0, 0);
-    const firstPage = Math.floor(offset / PAGE_SIZE) + 1;
+    const { start, end } = resultWindow(params);
+    if (start >= end) return { marketplace: this.name, success: true, listings: [] };
+
     const deadline = AbortSignal.timeout(SEARCH_DEADLINE_MS);
-    const listings: Listing[] = [];
+    const gathered: Listing[] = [];
     const seen = new Set<string>();
 
+    // A card can become several listings or none, so the start position is only known by reading from page 1.
     try {
-      for (let page = firstPage; page < firstPage + MAX_PAGES && listings.length < limit; page++) {
+      for (let page = 1; page <= MAX_PAGES && gathered.length < end; page++) {
         const { cards, hasNextPage } = searchPage(await this.get(searchUrl(params, page), deadline, 'text/html'));
-        const rows = page === firstPage ? cards.slice(offset % PAGE_SIZE) : cards;
-        const fresh = unseenCards(rows, seen);
-        listings.push(...(await this.listingsFrom(fresh, params, limit - listings.length, deadline)));
+        const fresh = unseenCards(cards, seen);
+        await this.collect(fresh, params, end, deadline, gathered);
         if (!hasNextPage || fresh.length === 0) break;
       }
     } catch (error) {
-      if (listings.length === 0) return this.createError(`Geartrade search failed: ${error}`);
-      return { marketplace: this.name, success: true, listings, note: `Later results failed: ${error}` };
+      if (gathered.length === 0) return this.createError(`Geartrade search failed: ${error}`);
+      return { marketplace: this.name, success: true, listings: gathered.slice(start, end), note: `Later results failed: ${error}` };
     }
 
-    return { marketplace: this.name, success: true, listings };
+    return { marketplace: this.name, success: true, listings: gathered.slice(start, end) };
   }
 
   async getListingDetails(input: string): Promise<ListingDetails> {
@@ -55,20 +55,18 @@ export class GeartradeMarketplace extends BaseMarketplace {
     return productDetails(product, ref);
   }
 
-  /** Requests product data only for multi-variant cards, and only until `wanted` listings are found. */
-  private async listingsFrom(cards: Card[], params: SearchParams, wanted: number, deadline: AbortSignal): Promise<Listing[]> {
+  /** Requests product data only for multi-variant cards, and only until `gathered` holds `end` listings. */
+  private async collect(cards: Card[], params: SearchParams, end: number, deadline: AbortSignal, gathered: Listing[]): Promise<void> {
     const conditions = storefrontConditions(params.condition);
     const condition = conditions.length === 1 ? conditions[0] : undefined;
-    const listings: Listing[] = [];
 
     let next = 0;
-    while (next < cards.length && listings.length < wanted) {
-      const batch = cards.slice(next, next + Math.min(PRODUCT_REQUESTS_AT_ONCE, wanted - listings.length));
+    while (next < cards.length && gathered.length < end) {
+      const batch = cards.slice(next, next + Math.min(PRODUCT_REQUESTS_AT_ONCE, end - gathered.length));
       next += batch.length;
       const found = await Promise.all(batch.map((card) => this.cardListings(card, params, condition, deadline)));
-      listings.push(...found.flat());
+      gathered.push(...found.flat());
     }
-    return listings.slice(0, wanted);
   }
 
   private async cardListings(card: Card, params: SearchParams, condition: string | undefined, deadline: AbortSignal): Promise<Listing[]> {
@@ -87,6 +85,13 @@ export class GeartradeMarketplace extends BaseMarketplace {
     if (!response.ok) throw new Error(`Geartrade returned ${response.status}`);
     return response.text();
   }
+}
+
+/** The listing positions a search returns, bounded by how far the page limit lets the adapter read. */
+export function resultWindow(params: Pick<SearchParams, 'offset' | 'limit'>): { start: number; end: number } {
+  const start = Math.max(params.offset ?? 0, 0);
+  const end = Math.min(start + (params.limit ?? 20), MAX_RESULTS);
+  return { start, end };
 }
 
 function unseenCards(cards: Card[], seen: Set<string>): Card[] {
