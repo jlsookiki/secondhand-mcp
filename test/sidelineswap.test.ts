@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SidelineSwapMarketplace, combinedTotal, exactTotal, soldOffset, wireObject } from '../src/marketplaces/sidelineswap/index.js';
+import { SEARCH_DEADLINE_MS, SidelineSwapMarketplace, combinedTotal, exactTotal, soldOffset, wireObject } from '../src/marketplaces/sidelineswap/index.js';
 import { listingIdFrom } from '../src/marketplaces/sidelineswap/parse.js';
 import { searchQuery } from '../src/marketplaces/sidelineswap/query.js';
 import type { Item } from '../src/marketplaces/sidelineswap/wire.js';
@@ -27,6 +27,25 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   sidelineswap = new SidelineSwapMarketplace();
 });
+
+/** Hands the test the search deadline so it can expire it at a chosen moment; per-request timeouts stay real. */
+function controlDeadline(): AbortController {
+  const deadline = new AbortController();
+  const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (ms === SEARCH_DEADLINE_MS ? deadline.signal : realTimeout(ms)));
+  return deadline;
+}
+
+function expire(deadline: AbortController) {
+  deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+}
+
+function pendingUntilAborted(init: RequestInit | undefined): Promise<Response> {
+  const signal = init?.signal;
+  return new Promise((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(signal.reason));
+  });
+}
 
 const requestedPages = () => fetchMock.mock.calls.map(([url]) => (url as URL).searchParams.get('page'));
 
@@ -202,6 +221,35 @@ describe('SidelineSwap search', () => {
     const result = await sidelineswap.search({ query: 'mask', limit: 3 });
     expect(result).toMatchObject({ success: true, note: 'Later pages failed: Error: SidelineSwap returned 429' });
     expect(result.listings).toHaveLength(1);
+  });
+
+  it('keeps the first page when the search deadline passes during a later page', async () => {
+    const deadline = controlDeadline();
+    fetchMock
+      .mockResolvedValueOnce(json(page([mask()], 1, true)))
+      .mockImplementationOnce((_url: URL, init?: RequestInit) => pendingUntilAborted(init));
+
+    const searching = sidelineswap.search({ query: 'mask', limit: 3 });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expire(deadline);
+    const result = await searching;
+
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['12475475']);
+    expect(result.note).toMatch(/^Later pages failed/);
+  });
+
+  it('fails when the search deadline passes before the first page arrives', async () => {
+    const deadline = controlDeadline();
+    fetchMock.mockImplementationOnce((_url: URL, init?: RequestInit) => pendingUntilAborted(init));
+
+    const searching = sidelineswap.search({ query: 'mask' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expire(deadline);
+    const result = await searching;
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('SidelineSwap search failed');
   });
 
   it.each([

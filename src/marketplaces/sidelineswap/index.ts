@@ -15,7 +15,7 @@ const API_URL = 'https://api.sidelineswap.com';
 const MAX_PAGES = 10;
 const MAX_RESULTS = PAGE_SIZE * MAX_PAGES;
 const REQUEST_TIMEOUT_MS = 20_000;
-const SEARCH_DEADLINE_MS = 45_000;
+export const SEARCH_DEADLINE_MS = 45_000;
 
 interface StateResults {
   listings: Listing[];
