@@ -33,8 +33,9 @@ export function summaryListing(item: Item): Listing | undefined {
 }
 
 export function itemDetails(item: Item, id: string): ListingDetails {
+  const name = item.name?.trim();
   const sellerDescription = item.description?.trim();
-  const facts = [askingPrice(item), ...attributes(item)];
+  const facts = [...(name ? [name] : []), askingPrice(item), ...attributes(item)];
   return {
     id,
     url: listingUrl(item, id),

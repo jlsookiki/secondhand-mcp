@@ -224,6 +224,19 @@ describe('SidelineSwap details', () => {
     expect(details.unavailable).toBeUndefined();
   });
 
+  it('opens the description with the listing name, which research fetch shows as the title', async () => {
+    const item = fixture('details').data;
+    fetchMock.mockResolvedValue(json(fixture('details')));
+    const details = await sidelineswap.getListingDetails('12549997');
+    expect(details.description?.split('\n')[0]).toBe(item.name);
+  });
+
+  it('starts with the price when the listing has no name', async () => {
+    fetchMock.mockResolvedValue(json({ data: { id: 12, price: 40 } }));
+    const details = await sidelineswap.getListingDetails('12');
+    expect(details.description).toBe('Price: $40.00');
+  });
+
   it('accepts a listing URL', async () => {
     fetchMock.mockResolvedValue(json(fixture('details')));
     const details = await sidelineswap.getListingDetails('https://sidelineswap.com/gear/hockey/goalie/goalie-masks/12549997-x');
@@ -240,7 +253,7 @@ describe('SidelineSwap details', () => {
     const details = await sidelineswap.getListingDetails('12');
     expect(details.unavailable).toBeUndefined();
     expect(details.images).toEqual([]);
-    expect(details.description).toBe('Price: not listed\nStatus: available\nLength: 32 inches');
+    expect(details.description).toBe('Bat\nPrice: not listed\nStatus: available\nLength: 32 inches');
   });
 
   it('keeps https photos once each, largest size first', async () => {
