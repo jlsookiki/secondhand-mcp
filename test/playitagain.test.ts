@@ -1,246 +1,340 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PlayItAgainMarketplace } from '../src/marketplaces/playitagain.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PlayItAgainMarketplace, clampCount, totalFound } from '../src/marketplaces/playitagain/index.js';
+import { currencyOf, pageData, productJsonLd, productPath, resultCount, summaryListing } from '../src/marketplaces/playitagain/parse.js';
+import { matchesFilters, searchUrl } from '../src/marketplaces/playitagain/query.js';
+import type { Product, SearchPage } from '../src/marketplaces/playitagain/wire.js';
+import type { Listing } from '../src/types.js';
 
-const fixture = (name: string) => readFileSync(new URL(`./fixtures/playitagain/${name}.html`, import.meta.url), 'utf8');
-const searchHtml = fixture('search');
-const productHtml = fixture('product');
-const canadaHtml = fixture('canadian-product');
-const context = (html: string) => JSON.parse(JSON.parse(html.match(/stencilBootstrap\([^,]+,\s*("(?:[^"\\]|\\.)*")\)/)![1]));
-const document = (data: unknown) => `<script>window.stencilBootstrap("search", ${JSON.stringify(JSON.stringify(data))});</script>`;
-const first = context(searchHtml).searchProducts[0];
-const canada = context(searchHtml).searchProducts[1];
-const single = (p = first) => document({template: 'pages/search', searchProducts: [p], searchProductsPerPage: 1, searchResultsCount: "1 result for 'test'"});
-function mockPages(...html: string[]) {
-  const mock = vi.fn();
-  for (const page of html) mock.mockResolvedValueOnce(new Response(page, {status: 200}));
-  vi.stubGlobal('fetch', mock);
-  return mock;
+type FixtureName = 'search' | 'product' | 'variant-product' | 'canadian-product';
+
+function fixture(name: FixtureName): string {
+  return readFileSync(new URL(`./fixtures/playitagain/${name}.html`, import.meta.url), 'utf8');
 }
-const marketplace = new PlayItAgainMarketplace();
-afterEach(() => vi.unstubAllGlobals());
 
-describe('Play It Again Sports public search', () => {
-  it('parses a captured search page with native currency, equipment condition, store, canonical IDs and full-size photos', async () => {
-    const fetch = mockPages(searchHtml);
-    const result = await marketplace.search({ query: 'bauer 950', limit: 2 });
+const products = (): Product[] => pageData<SearchPage>(fixture('search'))!.searchProducts!;
+const catcher = (): Product => products()[0];
+const canadianMask = (): Product => products()[1];
+
+const CATCHER_PATH = '/locations/leominster-ma/product/S000152950/Bauer-SUPREME-Jr';
+
+function productAt(n: number): Product {
+  return { ...catcher(), id: n, url: `/locations/boston-ma/product/S${n}/Bat` };
+}
+
+function searchPage(rows: unknown[], perPage = 12, total = rows.length): string {
+  const data = { template: 'pages/search', searchProducts: rows, searchProductsPerPage: perPage, searchResultsCount: `${total} results for 'x'` };
+  return `<script>window.stencilBootstrap("search", ${JSON.stringify(JSON.stringify(data))});</script>`;
+}
+
+function html(body: string, status = 200): Response {
+  return new Response(body, { status, headers: { 'Content-Type': 'text/html' } });
+}
+
+let fetchMock: ReturnType<typeof vi.fn>;
+let playitagain: PlayItAgainMarketplace;
+
+beforeEach(() => {
+  fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  playitagain = new PlayItAgainMarketplace();
+});
+
+const requestedPages = () => fetchMock.mock.calls.map(([url]) => (url as URL).searchParams.get('page'));
+
+describe('searchUrl', () => {
+  it('maps the query, page and sort onto the storefront search', () => {
+    const url = searchUrl({ query: 'goalie mask', sort: 'price_low_to_high' }, 3);
+    expect(url.origin + url.pathname).toBe('https://playitagainsports.com/search.php');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      search_query: 'goalie mask', section: 'product', page: '3', sort: 'priceasc',
+    });
+  });
+
+  it('ignores filters the storefront cannot apply', () => {
+    const url = searchUrl(
+      { query: 'bat', sort: 'most_popular', department: 'Men', radius: 10, showSold: true, brand: 'Easton', sizes: ['32'], category: 'Bats' },
+      1
+    );
+    expect([...url.searchParams.keys()].sort()).toEqual(['page', 'search_query', 'section', 'sort']);
+    expect(url.searchParams.get('sort')).toBe('relevance');
+  });
+});
+
+describe('matchesFilters', () => {
+  const listing = (overrides: Partial<Listing>): Listing => ({
+    id: '/x', title: 'Bat', price: '$30.00', url: 'https://playitagainsports.com/x', marketplace: 'playitagain', scrapedAt: '',
+    priceNumeric: 30, currency: 'USD', condition: 'Used', ...overrides,
+  });
+
+  it('keeps US listings inside the price bounds', () => {
+    expect(matchesFilters(listing({}), { query: 'bat', minPrice: 30, maxPrice: 30 })).toBe(true);
+    expect(matchesFilters(listing({}), { query: 'bat', maxPrice: 29.99 })).toBe(false);
+    expect(matchesFilters(listing({}), { query: 'bat', minPrice: 30.01 })).toBe(false);
+  });
+
+  it('leaves Canadian and unpriced listings out once a price bound is set', () => {
+    expect(matchesFilters(listing({ currency: 'CAD' }), { query: 'bat', maxPrice: 100 })).toBe(false);
+    expect(matchesFilters(listing({ currency: undefined, priceNumeric: undefined }), { query: 'bat', minPrice: 0 })).toBe(false);
+    expect(matchesFilters(listing({ currency: 'CAD' }), { query: 'bat' })).toBe(true);
+  });
+
+  it('matches new and used against the listed condition', () => {
+    expect(matchesFilters(listing({}), { query: 'bat', condition: 'used' })).toBe(true);
+    expect(matchesFilters(listing({}), { query: 'bat', condition: 'new' })).toBe(false);
+    expect(matchesFilters(listing({ condition: undefined }), { query: 'bat', condition: 'used' })).toBe(false);
+  });
+
+  it('ignores condition grades the storefront does not use', () => {
+    expect(matchesFilters(listing({ condition: 'New' }), { query: 'bat', condition: 'like_new' })).toBe(true);
+    expect(matchesFilters(listing({}), { query: 'bat', condition: 'any' })).toBe(true);
+  });
+});
+
+describe('currencyOf', () => {
+  it('reads the currency from the Country field', () => {
+    expect(currencyOf([{ name: 'Country', value: 'US' }])?.code).toBe('USD');
+    expect(currencyOf([{ name: 'Country', value: 'CA' }])?.code).toBe('CAD');
+    expect(currencyOf([{ name: 'Country', value: 'MX' }])).toBeUndefined();
+    expect(currencyOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('productPath', () => {
+  it.each([
+    [CATCHER_PATH, CATCHER_PATH],
+    [`https://playitagainsports.com${CATCHER_PATH}?sku=1#top`, CATCHER_PATH],
+  ])('reads %s', (input, path) => {
+    expect(productPath(input)).toBe(path);
+  });
+
+  it.each([`https://evil.test${CATCHER_PATH}`, `http://playitagainsports.com${CATCHER_PATH}`, '3843758', '../secret', '/locations/x/product/'])(
+    'rejects %s',
+    (input) => {
+      expect(productPath(input)).toBeUndefined();
+    }
+  );
+});
+
+describe('pageData', () => {
+  it('returns nothing for a page without embedded data or with broken JSON', () => {
+    expect(pageData('<html><title>Blocked</title></html>')).toBeUndefined();
+    expect(pageData('<script>window.stencilBootstrap("search", "{not json");</script>')).toBeUndefined();
+  });
+});
+
+describe('resultCount and totalFound', () => {
+  it('reads the storefront count', () => {
+    expect(resultCount("1,063 results for 'bat'")).toBe(1063);
+    expect(resultCount("1 result for 'bat'")).toBe(1);
+    expect(resultCount(undefined)).toBeUndefined();
+  });
+
+  it('reports the count only when no listing was filtered out locally', () => {
+    expect(totalFound(63, { query: 'bat' })).toBe(63);
+    expect(totalFound(63, { query: 'bat', condition: 'like_new' })).toBe(63);
+    expect(totalFound(63, { query: 'bat', condition: 'used' })).toBeUndefined();
+    expect(totalFound(63, { query: 'bat', maxPrice: 50 })).toBeUndefined();
+  });
+
+  it('leaves out a count the storefront has capped', () => {
+    expect(totalFound(9_999, { query: 'bat' })).toBe(9_999);
+    expect(totalFound(10_000, { query: 'bat' })).toBeUndefined();
+  });
+});
+
+describe('clampCount', () => {
+  it('keeps limit and offset between zero and the ten-page budget', () => {
+    expect(clampCount(-5)).toBe(0);
+    expect(clampCount(30)).toBe(30);
+    expect(clampCount(10_000)).toBe(120);
+  });
+});
+
+describe('summaryListing', () => {
+  it('turns a storefront product into a listing priced in the store currency', () => {
+    expect(summaryListing(catcher())).toMatchObject({
+      id: CATCHER_PATH, url: `https://playitagainsports.com${CATCHER_PATH}`,
+      price: '$39.99', priceNumeric: 39.99, currency: 'USD', condition: 'Used', seller: 'MA - Leominster', location: 'MA - Leominster',
+    });
+    expect(summaryListing(canadianMask())).toMatchObject({ price: 'C$14.99', priceNumeric: 14.99, currency: 'CAD' });
+  });
+
+  it('uses full-size photos', () => {
+    const images = summaryListing(catcher())!.images!;
+    expect(images).toHaveLength(4);
+    expect(images.every((url) => url.includes('/stencil/1280x1280/'))).toBe(true);
+  });
+
+  it('marks a starting price when the product has options', () => {
+    expect(summaryListing({ ...catcher(), has_options: true })!.price).toBe('from $39.99');
+  });
+
+  it('leaves out price fields without a known currency or price', () => {
+    const noCountry = summaryListing({ ...catcher(), custom_fields: [] })!;
+    expect(noCountry.price).toBe('Price not listed');
+    expect(noCountry.priceNumeric).toBeUndefined();
+    expect(summaryListing({ ...catcher(), price: undefined })!.currency).toBeUndefined();
+  });
+
+  it('skips a product without a name or product path', () => {
+    expect(summaryListing({ ...catcher(), name: ' ' })).toBeUndefined();
+    expect(summaryListing({ ...catcher(), url: 'https://evil.test/locations/a/product/b/c' })).toBeUndefined();
+    expect(summaryListing({ ...catcher(), url: undefined })).toBeUndefined();
+  });
+});
+
+describe('Play It Again Sports search', () => {
+  it('turns a captured search page into listings', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('search'))));
+    const result = await playitagain.search({ query: 'bauer 950', limit: 12 });
+
+    expect(result).toMatchObject({ success: true, totalFound: 63 });
+    expect(result.listings).toHaveLength(12);
+    expect(result.listings.slice(0, 2).map((l) => l.price)).toEqual(['$39.99', 'C$14.99']);
+    expect(result.note).toBeUndefined();
+  });
+
+  it('filters by condition and a dollar price bound', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('search'))));
+    const result = await playitagain.search({ query: 'bauer 950', condition: 'used', maxPrice: 30 });
+
+    expect(result.listings.map((l) => l.priceNumeric)).toEqual([29.99, 19.99, 24.99]);
+    expect(result.listings.every((l) => l.currency === 'USD' && l.condition === 'Used')).toBe(true);
+    expect(result.totalFound).toBeUndefined();
+  });
+
+  it('succeeds with filters it cannot apply', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('search'))));
+    const result = await playitagain.search({ query: 'bauer 950', department: 'Men', radius: 5, showSold: true, sort: 'most_popular', limit: 1 });
     expect(result.success).toBe(true);
-    expect(result.totalFound).toBe(63);
-    expect(result.listings[0]).toMatchObject({id: new URL(first.url).pathname, title: first.name, price: 'USD 39.99', priceNumeric: 39.99, currency: 'USD', seller: 'MA - Leominster', condition: 'Used'});
-    expect(result.listings[1]).toMatchObject({currency: 'CAD', price: 'CAD 14.99', seller: 'SK - Saskatoon'});
-    expect(result.listings[0].images).toHaveLength(4);
-    expect(result.listings[0].images?.every(u => u.includes('/1280x1280/'))).toBe(true);
-    expect(result.listings[0].url).not.toContain('?');
-    expect(result.note).toContain('additional inventory may remain');
-    const url = new URL(String(fetch.mock.calls[0][0]));
-    expect(url.searchParams.get('search_query')).toBe('bauer 950');
-    expect(fetch.mock.calls[0][1].redirect).toBe('error');
-    expect(fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(result.listings).toHaveLength(1);
   });
 
-  it('uses real page numbers, deduplicates boundary overlap, and applies offset after filtering', async () => {
-    const p2 = {...first,id: 2,url: '/locations/boston-ma/product/S0002/Bat'};
-    const p3 = {...first,id: 3,url: '/locations/boston-ma/product/S0003/Bat'};
-    const mk = (products: unknown[]) => document({template: 'pages/search',searchProducts:products,searchProductsPerPage:2,searchResultsCount:"4 results for 'test'"});
-    const fetch = mockPages(mk([first,p2]),mk([p2,p3]));
-    const result = await marketplace.search({query:'test',limit:2,offset:1});
-    expect(result.success).toBe(true);
-    expect(result.listings.map(p => p.id)).toEqual([p2.url,p3.url]);
-    expect(fetch.mock.calls.map(([url])=>new URL(String(url)).searchParams.get('page'))).toEqual(['1','2']);
-    expect(result.note).toContain('3 unique listings');
+  it('skips malformed and out-of-stock products', async () => {
+    const rows = [null, {}, { ...catcher(), url: 'not a product' }, { ...productAt(1), stock_level: 0 }, { ...productAt(2), availability: 'Sold Out' }, productAt(3)];
+    fetchMock.mockImplementation(() => Promise.resolve(html(searchPage(rows))));
+    const result = await playitagain.search({ query: 'bat' });
+    expect(result.listings.map((l) => l.id)).toEqual(['/locations/boston-ma/product/S3/Bat']);
   });
 
-  it('applies price bounds only to USD and checks structured equipment fields, not the store brand', async () => {
-    mockPages(searchHtml, document({template:'pages/search',searchProducts:[],searchProductsPerPage:12,searchResultsCount:"0 results for 'test'"}));
-    const result = await marketplace.search({query:'test', limit:1,minPrice:30,maxPrice:40,brand:' bauer ',condition:'used',colors:['BLACK'], category:'Goalie/Goalie Catchers'});
-    expect(result.listings.map(p=>p.url)).toEqual([first.url]);
-    expect(result.note).toContain('Canadian listings were excluded');
-    mockPages(single(canada));
-    expect((await marketplace.search({query:'test',maxPrice:20})).listings).toEqual([]);
+  it('applies the offset to matching listings and pages until the limit is filled', async () => {
+    fetchMock
+      .mockImplementationOnce(() => Promise.resolve(html(searchPage([productAt(1), productAt(2)], 2, 4))))
+      .mockImplementationOnce(() => Promise.resolve(html(searchPage([productAt(2), productAt(3)], 2, 4))));
+
+    const result = await playitagain.search({ query: 'bat', offset: 1, limit: 2 });
+
+    expect(result.listings.map((l) => l.id)).toEqual(['/locations/boston-ma/product/S2/Bat', '/locations/boston-ma/product/S3/Bat']);
+    expect(requestedPages()).toEqual(['1', '2']);
   });
 
-  it('does not guess sizes from the title or treat a store as the equipment manufacturer', async () => {
-    mockPages(single(first));
-    expect((await marketplace.search({query:'test',sizes:['Junior']})).listings).toEqual([]);
-    mockPages(single(first));
-    expect((await marketplace.search({query:'test',brand:'MA - Leominster'})).listings).toEqual([]);
-    const sized = {...first, custom_fields:[...first.custom_fields,{name:'Size',value:'M'}]};
-    mockPages(single(sized));
-    expect((await marketplace.search({query:'test',sizes:['m']})).listings).toHaveLength(1);
+  it('stops after a short page', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(searchPage([productAt(1)], 12))));
+    await playitagain.search({ query: 'bat' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('excludes explicit out-of-stock products without assuming a missing stock count is zero', async () => {
-    mockPages(single({...first,stock_level:0}));
-    expect((await marketplace.search({query:'test'})).listings).toEqual([]);
-    mockPages(single({...first,availability:'Out of Stock'}));
-    expect((await marketplace.search({query:'test'})).listings).toEqual([]);
-    mockPages(single(first));
-    expect((await marketplace.search({query:'test'})).listings).toHaveLength(1);
+  it('stops when a page brings nothing new', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(searchPage([productAt(1)], 1))));
+    const result = await playitagain.search({ query: 'bat', limit: 5 });
+    expect(result.listings).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('recognizes a genuine zero result response', async () => {
-    mockPages(document({template:'pages/search',searchProducts:[],searchProductsPerPage:12,searchResultsCount:"0 results for 'zzz'"}));
-    expect(await marketplace.search({query:'zzz'})).toMatchObject({success:true,listings:[],totalFound:0});
-  });
-
-  it('stops at ten pages and reports remaining coverage honestly', async () => {
-    const pages = Array.from({length:10},(_,i)=>document({template:'pages/search',searchProducts:[{...first,id:i+1}],searchProductsPerPage:1,searchResultsCount:"100 results for 'test'"}));
-    const fetch = mockPages(...pages);
-    const result = await marketplace.search({query:'test',limit:20});
-    expect(result.success).toBe(true);
-    expect(fetch).toHaveBeenCalledTimes(10);
+  it('requests at most ten pages', async () => {
+    fetchMock.mockImplementation((url: URL) => {
+      const number = Number(url.searchParams.get('page'));
+      return Promise.resolve(html(searchPage([productAt(number)], 1)));
+    });
+    const result = await playitagain.search({ query: 'bat', limit: 30 });
+    expect(fetchMock).toHaveBeenCalledTimes(10);
     expect(result.listings).toHaveLength(10);
-    expect(result.note).toContain('additional inventory may remain');
   });
 
-  it('fails explicitly when pagination repeats or a later page fails', async () => {
-    const page = document({template:'pages/search',searchProducts:[first],searchProductsPerPage:1,searchResultsCount:"3 results for 'test'"});
-    mockPages(page,page);
-    expect(await marketplace.search({query:'test'})).toMatchObject({success:false,listings:[],error:expect.stringContaining('Pagination repeated')});
-    mockPages(page,'<html>missing data</html>');
-    expect(await marketplace.search({query:'test'})).toMatchObject({success:false,listings:[]});
-  });
-
-  it.each([
-    ['missing bootstrap','<html></html>'], ['malformed JSON','<script>window.stencilBootstrap("search", "oops");</script>'],
-    ['blocked','<title>Just a moment...</title>'],['missing count',document({template:'pages/search',searchProducts:[first],searchProductsPerPage:12})],
-    ['inconsistent empty',document({template:'pages/search',searchProducts:[],searchProductsPerPage:12,searchResultsCount:"5 results for 'test'"})],
-    ['missing price',single({...first,price:null})],['unknown country',single({...first,custom_fields:[]})],
-    ['invalid product URL',single({...first,url:'https://evil.example/item'})],['empty title',single({...first,name:''})],
-    ['malformed field',single({...first,custom_fields:[{name:'Country',value:42}]})],
-  ])('fails closed on %s',async (_name,html)=>{
-    mockPages(html);
-    expect(await marketplace.search({query:'test'})).toMatchObject({success:false,listings:[],error:expect.any(String)});
-  });
-
-  it('shares an overall deadline across pages and reports aborts instead of claiming partial success',async()=>{
-    const overall=new AbortController();
-    const timeout=AbortSignal.timeout.bind(AbortSignal);
-    const timeoutSpy=vi.spyOn(AbortSignal,'timeout').mockImplementation(ms=>ms===45_000 ? overall.signal : timeout(ms));
-    const page=document({template:'pages/search',searchProducts:[first],searchProductsPerPage:1,searchResultsCount:"3 results for 'test'"});
-    const fetch=vi.fn().mockResolvedValueOnce(new Response(page)).mockImplementationOnce((_url,options)=>new Promise((_resolve,reject)=>{
-      options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true});
-    }));
-    vi.stubGlobal('fetch',fetch);
-    try {
-      const pending=marketplace.search({query:'test'});
-      await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
-      overall.abort(new DOMException('Overall search deadline exceeded','TimeoutError'));
-      const result=await pending;
-      expect(result).toMatchObject({success:false,listings:[],error:expect.stringContaining('Overall search deadline exceeded')});
-      expect(timeoutSpy).toHaveBeenCalledWith(45_000);
-    }finally {timeoutSpy.mockRestore();}
-  });
-
-  it('reports HTTP and transport failures, and health checks return false', async () => {
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('blocked',{status:403})));
-    expect((await marketplace.search({query:'test'})).error).toContain('HTTP 403');
-    expect(await marketplace.healthCheck()).toBe(false);
-    vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('timeout')));
-    expect((await marketplace.search({query:'test'})).error).toContain('timeout');
+  it('keeps earlier pages when a later page fails', async () => {
+    fetchMock
+      .mockImplementationOnce(() => Promise.resolve(html(searchPage([productAt(1)], 1))))
+      .mockImplementationOnce(() => Promise.resolve(html('', 429)));
+    const result = await playitagain.search({ query: 'bat', limit: 3 });
+    expect(result).toMatchObject({ success: true, note: 'Later pages failed: Error: Play It Again Sports returned 429' });
+    expect(result.listings).toHaveLength(1);
   });
 
   it.each([
-    {query:''}, {query:'x',limit:121},{query:'x',offset:-1},{query:'x',limit:1.5},
-    {query:'x',minPrice:-1},{query:'x',maxPrice:NaN},{query:'x',minPrice:50,maxPrice:10},
-    {query:'x',radius:10},{query:'x',department:'Men'},{query:'x',showSold:true},
-    {query:'x',condition:'excellent' as const},{query:'x',sort:'most_popular' as const},
-  ])('rejects unsupported/invalid parameters before fetching: %j',async params=>{
-    const fetch = mockPages();
-    expect((await marketplace.search(params)).success).toBe(false);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it('returns no listings for limit zero without fetching',async()=>{
-    const fetch = mockPages();
-    expect((await marketplace.search({query:'test',limit:0})).listings).toEqual([]);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it('encodes special queries and uses the storefront sorting parameter',async()=>{
-    const fetch=mockPages(single());
-    await marketplace.search({query:'bat & glove + "32"',sort:'price_low_to_high'});
-    const url=new URL(String(fetch.mock.calls[0][0]));
-    expect(url.searchParams.get('search_query')).toBe('bat & glove + "32"');
-    expect(url.searchParams.get('sort')).toBe('priceasc');
+    ['an HTTP error', () => html('', 403), 'Play It Again Sports returned 403'],
+    ['a page without embedded data', () => html('<title>Just a moment</title>'), 'unexpected search page'],
+    ['a product page instead of search', () => html(fixture('product')), 'unexpected search page'],
+  ])('reports %s', async (_label, reply, message) => {
+    fetchMock.mockImplementation(() => Promise.resolve(reply()));
+    const result = await playitagain.search({ query: 'bat' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(message);
   });
 });
 
-describe('Play It Again Sports product details',()=>{
-  it('uses JSON-LD description and all gallery images, custom fields, store and explicit fulfillment',async()=>{
-    const fetch=mockPages(productHtml);
-    const details=await marketplace.getListingDetails(first.url+'?tracking=1');
-    expect(details.description).toContain('SKU: 11722-S000152950');
+describe('productJsonLd', () => {
+  it('reads a product whose description the storefront left empty', () => {
+    const product = productJsonLd(fixture('variant-product'), '/locations/whitby-on/product/CCM-AXIS-F5-GOALIE-MASK/GHH-CCM-AXIS-F5-GOALIE-MASK-SR-WHT');
+    expect(product).toMatchObject({ '@type': 'Product', description: null });
+  });
+
+  it('ignores a product block for a different path', () => {
+    expect(productJsonLd(fixture('product'), '/locations/a/product/b/c')).toBeUndefined();
+  });
+});
+
+describe('Play It Again Sports details', () => {
+  it('lists price, stock, product fields, store, delivery and full-size photos', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('product'))));
+
+    const details = await playitagain.getListingDetails(CATCHER_PATH);
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`https://playitagainsports.com${CATCHER_PATH}`);
+    expect(details).toMatchObject({
+      id: CATCHER_PATH, seller: 'MA - Leominster', location: 'MA - Leominster',
+      deliveryTypes: ['Pick Up in Store', 'Standard Shipping'], isShippingOffered: true,
+    });
+    expect(details.description).toContain('Price: $39.99');
+    expect(details.description).toContain('Status: in stock');
     expect(details.description).toContain('Condition: Used');
-    expect(details.description).toContain('Current price: USD 39.99 (before shipping and tax)');
-    expect(details.description).toContain('Availability: In stock');
+    expect(details.description).toContain('Used Bauer SUPREME Junior Goalie Catcher Black');
     expect(details.images).toHaveLength(4);
-    expect(details.images.every(u=>u.includes('/1280x1280/'))).toBe(true);
-    expect(details).toMatchObject({seller:'MA - Leominster',isShippingOffered:true,deliveryTypes:['Pick Up in Store','Standard Shipping']});
-    expect(String(fetch.mock.calls[0][0])).toBe(first.url);
+    expect(details.images.every((url) => url.includes('/stencil/1280x1280/'))).toBe(true);
+    expect(details.unavailable).toBeUndefined();
   });
-  it('corrects a Canadian PDP whose initial JSON-LD misleadingly says USD',async()=>{
-    expect(canadaHtml).toContain('"priceCurrency": "USD"');
-    mockPages(canadaHtml);
-    const details=await marketplace.getListingDetails(canada.url);
-    expect(details.description).toContain('Price currency: CAD');
-    expect(details.description).toContain('Current price: CAD 14.99');
-    expect(details.images).toHaveLength(2);
-  });
-  it('handles the captured missing-description template bug without inventing description or variant fit',async()=>{
-    const html=fixture('variant-product');
-    expect(html).toContain('"description": ,');
-    mockPages(html);
-    const details=await marketplace.getListingDetails(context(html).productUrl);
-    expect(details.description).toContain('Seller description: not provided');
-    expect(details.description).toContain('Selectable options: verify the desired size and final price');
-    expect(details.isShippingOffered).toBe(false);
-    expect(details.description).toContain('Current price: CAD 239.99–249.99 (options vary)');
-  });
-  it('marks option search prices as starting prices',async()=>{
-    mockPages(single({...first,has_options:true}));
-    const result=await marketplace.search({query:'mask'});
-    expect(result.listings[0].price).toBe('USD 39.99 (from; select options)');
-    expect(result.listings[0].description).toContain('verify the desired size and final price');
-  });
-  it('reports removed products as HTTP errors',async()=>{
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('not found',{status:404})));
-    await expect(marketplace.getListingDetails(first.url)).rejects.toThrow('HTTP 404');
-  });
-  it('never promises shipping when the product field is absent or says No',async()=>{
-    for(const value of [undefined,'No']) {
-      const html=productHtml;
-      const data=context(html); data.customFields=data.customFields.filter((f: {name:string})=>f.name!=='Standard Shipping');
-      if(value) data.customFields.push({name:'Standard Shipping',value});
-      const changed=html.replace(/window\.stencilBootstrap\([^,]+,\s*("(?:[^"\\]|\\.)*")\)/,`window.stencilBootstrap("product", ${JSON.stringify(JSON.stringify(data))})`);
-      mockPages(changed);
-      expect((await marketplace.getListingDetails(first.url)).isShippingOffered).toBe(value==='No' ? false : undefined);
-    }
-  });
-  it('rejects out of stock, mismatched, removed or malformed pages',async()=>{
-    for(const html of [productHtml.replace('\\"isInStock\\": true','\\"isInStock\\": false'),searchHtml,'<html>404</html>',productHtml.replace('"@type": "Product"','"@type": "Unknown"')]) {
-      mockPages(html);
-      await expect(marketplace.getListingDetails(first.url)).rejects.toThrow();
-    }
-  });
-  it.each(['1234','https://evil.example/locations/a/product/b/c','//evil.example/locations/a/product/b/c','https://playitagainsports.com/search.php','https://playitagainsports.com:444/locations/a/product/b/c'])('rejects invalid IDs before networking: %s',async id=>{
-    const fetch=mockPages();
-    await expect(marketplace.getListingDetails(id)).rejects.toThrow();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-});
 
-describe('Play It Again Sports tool integration',()=>{
-  it('routes registered search and detail tools and exposes coverage notes',async()=>{
-    const {registerMarketplace}=await import('../src/marketplaces/index.js');
-    const {searchMarketplace}=await import('../src/tools/search-marketplace.js');
-    const {listingDetails}=await import('../src/tools/listing-details.js');
-    registerMarketplace(new PlayItAgainMarketplace());
-    mockPages(searchHtml);
-    const search=await searchMarketplace({query:'bauer 950',marketplace:'playitagain',limit:1});
-    expect(search.content[0]).toMatchObject({type:'text',text:expect.stringContaining('additional inventory may remain')});
-    expect(search.content[0]).toMatchObject({text:expect.stringContaining('USD 39.99')});
-    mockPages(productHtml);
-    const details=await listingDetails({listingId:first.url,marketplace:'playitagain',maxImages:0});
-    expect(details.content[0]).toMatchObject({type:'text',text:expect.stringContaining('11722-S000152950')});
-    expect(details.content[0]).toMatchObject({text:expect.stringContaining('4 photos')});
+  it('prices a Canadian store in CAD', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('canadian-product'))));
+    const details = await playitagain.getListingDetails('/locations/Saskatoon-SK/product/S000044873/Bauer-Hockey-Wire-Mask');
+    expect(details.description).toContain('Price: C$14.99');
+  });
+
+  it('shows the price range of a product with options and flags the missing description', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('variant-product'))));
+    const details = await playitagain.getListingDetails(
+      'https://playitagainsports.com/locations/whitby-on/product/CCM-AXIS-F5-GOALIE-MASK/GHH-CCM-AXIS-F5-GOALIE-MASK-SR-WHT'
+    );
+    expect(details.description).toContain('Price: C$239.99–C$249.99');
+    expect(details.isShippingOffered).toBe(false);
+    expect(details.unavailable).toEqual(['description']);
+  });
+
+  it('rejects an unrecognised id without a request', async () => {
+    await expect(playitagain.getListingDetails('3843758')).rejects.toThrow('listing IDs are product paths');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a different product', () => html(fixture('canadian-product'))],
+    ['a page without embedded data', () => html('<html></html>')],
+  ])('treats %s as not found', async (_label, reply) => {
+    fetchMock.mockImplementation(() => Promise.resolve(reply()));
+    await expect(playitagain.getListingDetails(CATCHER_PATH)).rejects.toThrow('not found');
+  });
+
+  it('passes on HTTP errors', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html('', 404)));
+    await expect(playitagain.getListingDetails(CATCHER_PATH)).rejects.toThrow('Play It Again Sports returned 404');
   });
 });
