@@ -128,10 +128,43 @@ export function conditionOf(product: Product): string | undefined {
   return product.description ? plainText(product.description).match(CONDITION_STATEMENT)?.[1] : undefined;
 }
 
+/** Reads `/products/<handle>.js`, refusing a body that is not shaped like a product. */
+export function productFrom(text: string): Product {
+  const value = parsedJson(text);
+  if (!isProduct(value)) throw new Error('Geartrade returned unexpected product data');
+  return value;
+}
+
 function searchMeta(html: string): SearchMeta {
   const json = html.match(META)?.[1];
   if (!json) throw new Error('Geartrade search page is missing its product data');
-  return JSON.parse(json) as SearchMeta;
+  const value = parsedJson(json);
+  if (!isSearchMeta(value)) throw new Error('Geartrade search page has unexpected product data');
+  return value;
+}
+
+function parsedJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function isProduct(value: unknown): value is Product {
+  return isRecord(value) && isListOrMissing(value.variants) && isListOrMissing(value.images) && isListOrMissing(value.options);
+}
+
+function isSearchMeta(value: unknown): value is SearchMeta {
+  return isRecord(value) && isListOrMissing(value.products);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isListOrMissing(value: unknown): boolean {
+  return value === undefined || value === null || Array.isArray(value);
 }
 
 function parseCard(markup: string, variantsByHandle: Map<string, MetaVariant[]>): Card | undefined {

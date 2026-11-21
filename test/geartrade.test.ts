@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GeartradeMarketplace, resultWindow } from '../src/marketplaces/geartrade/index.js';
-import { cardListing, conditionOf, listingRefFrom, productListings, searchPage } from '../src/marketplaces/geartrade/parse.js';
+import { cardListing, conditionOf, listingRefFrom, productFrom, productListings, searchPage } from '../src/marketplaces/geartrade/parse.js';
 import { searchUrl } from '../src/marketplaces/geartrade/query.js';
 import type { Product } from '../src/marketplaces/geartrade/wire.js';
 
@@ -121,6 +121,7 @@ describe('searchPage', () => {
     ['a page that is not a search page', '<html>Access denied</html>', 'unexpected search page'],
     ['prices in another currency', searchHtml.replace('data-currency="USD"', 'data-currency="CAD"'), 'prices in CAD'],
     ['a page without product data', searchHtml.replace('var meta =', 'var other ='), 'missing its product data'],
+    ['product data that is not a list', searchHtml.replace(/var meta = \{.*\};$/m, 'var meta = {"products":{}};'), 'unexpected product data'],
   ])('rejects %s', (_label, page, message) => {
     expect(() => searchPage(page)).toThrow(message);
   });
@@ -161,6 +162,21 @@ describe('productListings', () => {
 
   it('lists nothing for a product that is no longer available', () => {
     expect(productListings({ ...jacket(), available: false }, JACKET, { query: 'jacket' })).toEqual([]);
+  });
+});
+
+describe('productFrom', () => {
+  it('reads a product body', () => {
+    expect(productFrom(fixture('product.json')).handle).toBe(SKIS);
+  });
+
+  it.each([
+    ['null', 'null'],
+    ['a list', '[]'],
+    ['an HTML page', '<html>Checking your browser</html>'],
+    ['variants that are not a list', JSON.stringify({ ...skis(), variants: {} })],
+  ])('rejects %s', (_label, body) => {
+    expect(() => productFrom(body)).toThrow('unexpected product data');
   });
 });
 
@@ -255,6 +271,12 @@ describe('Geartrade search', () => {
     expect(result.listings.map((l) => l.id)).toEqual([`${SKIS}:54029224509745`]);
   });
 
+  it('skips a card whose product body is not a product', async () => {
+    fetchMock.mockImplementation((url: URL) => Promise.resolve(url.pathname === '/search' ? html(lastPage) : new Response('null')));
+    const result = await geartrade.search({ query: 'skis' });
+    expect(result.listings.map((l) => l.id)).toEqual([`${SKIS}:54029224509745`]);
+  });
+
   it.each([
     ['an HTTP error', () => html('', 403), 'Geartrade returned 403'],
     ['a block page', () => html('<html>Access denied</html>'), 'unexpected search page'],
@@ -306,6 +328,11 @@ describe('Geartrade details', () => {
   it('treats a reply for another product as not found', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(json(jacket())));
     await expect(geartrade.getListingDetails(SKIS)).rejects.toThrow('not found');
+  });
+
+  it('reports a body that is not a product', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('null')));
+    await expect(geartrade.getListingDetails(SKIS)).rejects.toThrow('Geartrade returned unexpected product data');
   });
 
   it('passes on HTTP errors', async () => {

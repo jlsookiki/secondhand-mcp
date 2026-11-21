@@ -7,7 +7,7 @@
 
 import { BaseMarketplace } from '../base.js';
 import { Listing, ListingDetails, SearchParams, SearchResult } from '../../types.js';
-import { Card, cardListing, listingRefFrom, productDetails, productListings, searchPage } from './parse.js';
+import { Card, cardListing, listingRefFrom, productDetails, productFrom, productListings, searchPage } from './parse.js';
 import { PAGE_SIZE, SITE, searchUrl, storefrontConditions } from './query.js';
 import { Product } from './wire.js';
 
@@ -86,7 +86,7 @@ export class GeartradeMarketplace extends BaseMarketplace {
   }
 
   private async product(handle: string, deadline?: AbortSignal): Promise<Product> {
-    return JSON.parse(await this.get(new URL(`/products/${handle}.js`, SITE), deadline, 'application/json')) as Product;
+    return productFrom(await this.get(new URL(`/products/${handle}.js`, SITE), deadline, 'application/json'));
   }
 
   private async get(url: URL, deadline: AbortSignal | undefined, accept: string): Promise<string> {
