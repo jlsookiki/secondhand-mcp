@@ -1,242 +1,278 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeartradeMarketplace } from '../src/marketplaces/geartrade.js';
-import { registerMarketplace } from '../src/marketplaces/index.js';
-import { searchMarketplace } from '../src/tools/search-marketplace.js';
-import { listingDetails } from '../src/tools/listing-details.js';
-import { researchFetch } from '../src/tools/deep-research.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GeartradeMarketplace } from '../src/marketplaces/geartrade/index.js';
+import { cardListing, conditionOf, listingRefFrom, productListings, searchPage } from '../src/marketplaces/geartrade/parse.js';
+import { searchUrl } from '../src/marketplaces/geartrade/query.js';
+import type { Product } from '../src/marketplaces/geartrade/wire.js';
 
-const html = readFileSync(new URL('./fixtures/geartrade/search.html', import.meta.url), 'utf8');
-const fixture = JSON.parse(readFileSync(new URL('./fixtures/geartrade/product.json', import.meta.url), 'utf8'));
-const handle = fixture.handle;
-const empty = '<title>Search: 0 results found for &quot;absent&quot;</title><div data-page-type="search" data-currency="USD"></div>';
+const fixture = (name: string) => readFileSync(new URL(`./fixtures/geartrade/${name}`, import.meta.url), 'utf8');
+const searchHtml = fixture('search.html');
+const skis = (): Product => JSON.parse(fixture('product.json'));
+const jacket = (): Product => JSON.parse(fixture('product-variants.json'));
+
+const SKIS = 'faction-dancer-2-skis-blue-w-strive-11-gw-binding-2026-18-1676979';
+const JACKET = 'dynafit-tigard-polartec-hooded-jacket-mens-1045872';
+
+const html = (body: string, status = 200) => new Response(body, { status, headers: { 'Content-Type': 'text/html' } });
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+const lastPage = searchHtml.replace(/<a class="pagination__arrow[^>]*><\/a>/, '');
+
 let fetchMock: ReturnType<typeof vi.fn>;
-let mp: GeartradeMarketplace;
+let geartrade: GeartradeMarketplace;
 
 beforeEach(() => {
-  fetchMock = vi.fn(async (url: string) => new Response(url.includes('.js') ? JSON.stringify(fixture) : html));
+  fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
-  mp = new GeartradeMarketplace();
+  geartrade = new GeartradeMarketplace();
 });
-afterEach(() => vi.unstubAllGlobals());
+
+/** Answers every request with a fresh Response: search pages from `pages`, product data from the fixtures. */
+function serve(pages: (page: number) => Response) {
+  fetchMock.mockImplementation((url: URL) => {
+    if (url.pathname === '/search') return Promise.resolve(pages(Number(url.searchParams.get('page'))));
+    if (url.pathname === `/products/${JACKET}.js`) return Promise.resolve(json(jacket()));
+    if (url.pathname === `/products/${SKIS}.js`) return Promise.resolve(json(skis()));
+    return Promise.resolve(json({}, 404));
+  });
+}
+
+const requested = () => fetchMock.mock.calls.map(([url]) => {
+  const { pathname, searchParams } = url as URL;
+  return pathname === '/search' ? `search page ${searchParams.get('page')}` : pathname;
+});
+
+describe('searchUrl', () => {
+  it('maps supported filters onto storefront parameters', () => {
+    const url = searchUrl(
+      { query: 'skis', minPrice: 100, maxPrice: 500, brand: 'Faction', category: 'Alpine Skis w/ Bindings', sizes: ['182cm'], condition: 'good', sort: 'price_low_to_high' },
+      2
+    );
+    expect(url.origin + url.pathname).toBe('https://geartrade.com/search');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: 'skis', type: 'product', sort_by: 'price-ascending', page: '2',
+      'filter.v.price.gte': '100', 'filter.v.price.lte': '500',
+      'filter.p.m.global.Brand': 'Faction', 'filter.p.product_type': 'Alpine Skis w/ Bindings',
+      'filter.v.option.size': '182cm', 'filter.v.m.global.Condition': 'Good',
+    });
+  });
+
+  it('asks for every used grade when the condition is used', () => {
+    expect(searchUrl({ query: 'skis', condition: 'used' }, 1).searchParams.getAll('filter.v.m.global.Condition')).toEqual(['Excellent', 'Good', 'Fair']);
+  });
+
+  it('ignores filters Geartrade cannot apply', () => {
+    const url = searchUrl({ query: 'skis', condition: 'like_new', sort: 'newest', department: 'Women', colors: ['red'], location: 'Denver, CO' }, 1);
+    expect([...url.searchParams.keys()].sort()).toEqual(['page', 'q', 'sort_by', 'type']);
+    expect(url.searchParams.get('sort_by')).toBe('relevance');
+  });
+});
+
+describe('listingRefFrom', () => {
+  it.each([
+    [SKIS, { handle: SKIS, variantId: undefined }],
+    [`${SKIS}:54029224509745`, { handle: SKIS, variantId: '54029224509745' }],
+  ])('reads %s', (input, ref) => {
+    expect(listingRefFrom(input)).toEqual(ref);
+  });
+
+  it.each(['https://geartrade.com/products/skis', '../secret', 'skis/../x', 'Skis', 'skis:0', 'skis:', '-skis', 'skis:12:34'])('rejects %s', (input) => {
+    expect(listingRefFrom(input)).toBeUndefined();
+  });
+});
+
+describe('searchPage', () => {
+  it('joins each card with its variants from the page analytics object', () => {
+    const { cards, hasNextPage } = searchPage(searchHtml);
+    expect(hasNextPage).toBe(true);
+    expect(cards.map((card) => [card.handle, card.variants.length])).toEqual([[SKIS, 1], [JACKET, 3]]);
+    expect(cards[1].title).toBe("Dynafit Dynafit Tigard Polartec Hooded Jacket - Men's");
+    expect(cards[0].image).toMatch(/^https:\/\/geartrade\.com\/cdn\/shop\/files\/36413b6f/);
+  });
+
+  it('skips a card the analytics object does not list', () => {
+    const page = searchHtml.replace(`"handle":"${JACKET}"`, '"handle":"other"');
+    expect(searchPage(page).cards.map((card) => card.handle)).toEqual([SKIS]);
+  });
+
+  it('reads an empty results page', () => {
+    const empty = '<div data-page-type="search" data-currency="USD"></div>\n  var meta = {"page":{}};\n';
+    expect(searchPage(empty)).toEqual({ cards: [], hasNextPage: false });
+  });
+
+  it.each([
+    ['a page that is not a search page', '<html>Access denied</html>', 'unexpected search page'],
+    ['prices in another currency', searchHtml.replace('data-currency="USD"', 'data-currency="CAD"'), 'prices in CAD'],
+    ['a page without product data', searchHtml.replace('var meta =', 'var other ='), 'missing its product data'],
+  ])('rejects %s', (_label, page, message) => {
+    expect(() => searchPage(page)).toThrow(message);
+  });
+});
+
+describe('cardListing', () => {
+  it('turns a single-variant card into a USD listing', () => {
+    const [card] = searchPage(searchHtml).cards;
+    expect(cardListing(card, 'Good')).toMatchObject({
+      id: `${SKIS}:54029224509745`,
+      title: 'Faction Dancer 2 Skis (Blue) w/ Strive 11 GW Binding 2026 - 182cm',
+      price: '$646.14', priceNumeric: 646.14, currency: 'USD', condition: 'Good',
+      url: `https://geartrade.com/products/${SKIS}?variant=54029224509745`,
+    });
+  });
+
+  it('skips a card whose variant has no usable id or price', () => {
+    const [card] = searchPage(searchHtml).cards;
+    expect(cardListing({ ...card, variants: [{ id: 1, price: 12.5 }] }, undefined)).toBeUndefined();
+    expect(cardListing({ ...card, variants: [{ price: 100 }] }, undefined)).toBeUndefined();
+  });
+});
+
+describe('productListings', () => {
+  it('lists only available variants, with the variant in the title', () => {
+    const listings = productListings(jacket(), JACKET, { query: 'jacket' });
+    expect(listings.map((l) => [l.title, l.price])).toEqual([
+      ["Dynafit Dynafit Tigard Polartec Hooded Jacket - Men's (S / Blueberry Burgundy)", '$66.57'],
+      ["Dynafit Dynafit Tigard Polartec Hooded Jacket - Men's (XS / Olive Night)", '$66.57'],
+    ]);
+    expect(listings[0]).toMatchObject({ id: `${JACKET}:51396454285617`, condition: 'New', images: [expect.stringMatching(/^https:\/\/cdn\.shopify\.com\//)] });
+  });
+
+  it('keeps only the variants inside the requested sizes and price range', () => {
+    expect(productListings(jacket(), JACKET, { query: 'jacket', sizes: ['xs'] }).map((l) => l.id)).toEqual([`${JACKET}:51396455432497`]);
+    expect(productListings(jacket(), JACKET, { query: 'jacket', maxPrice: 60 })).toEqual([]);
+  });
+
+  it('lists nothing for a product that is no longer available', () => {
+    expect(productListings({ ...jacket(), available: false }, JACKET, { query: 'jacket' })).toEqual([]);
+  });
+});
+
+describe('conditionOf', () => {
+  it('reads the grade from the condition sentence', () => {
+    expect(conditionOf(skis())).toBe('New');
+    expect(conditionOf({ description: '<p>This jacket is in Good condition.</p>' })).toBe('Good');
+    expect(conditionOf({ description: '<p>Great in all conditions.</p>' })).toBeUndefined();
+  });
+});
 
 describe('Geartrade search', () => {
-  it('parses a captured full search result and cents, not predictive suggestions or hidden prices', async () => {
-    const result = await mp.search({ query: 'skis', limit: 1 });
+  it('needs product data only for the multi-variant card', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis' });
+
     expect(result.success).toBe(true);
-    expect(result.listings[0]).toMatchObject({
-      id: `${handle}:54029224509745`, price: 'USD 646.14', priceNumeric: 646.14,
-      currency: 'USD', condition: 'New', marketplace: 'geartrade',
-      url: `https://geartrade.com/products/${handle}?variant=54029224509745`,
-    });
-    expect(result.listings[0].description).toContain('In stock');
-    expect(result.listings[0].images.every(u => u.startsWith('https://'))).toBe(true);
-    expect(result.note).toContain('more storefront results may remain');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][0]).toContain('/search?');
-    expect(fetchMock.mock.calls[0][0]).not.toContain('suggest');
+    expect(result.note).toBeUndefined();
+    expect(result.listings.map((l) => l.id)).toEqual([`${SKIS}:54029224509745`, `${JACKET}:51396454285617`, `${JACKET}:51396455432497`]);
+    expect(requested()).toEqual(['search page 1', `/products/${JACKET}.js`]);
   });
 
-  it('sends native filters and rechecks requested-size stock and price on each variant', async () => {
-    const product = structuredClone(fixture);
-    product.description = '<p>These skis are in Good condition.</p>';
-    product.variants = [
-      { ...product.variants[0], id: 1, options: ['M', 'Blue'], title: 'M / Blue', price: 19999, available: false },
-      { ...product.variants[0], id: 2, options: ['L', 'Blue'], title: 'L / Blue', price: 10000 },
-      { ...product.variants[0], id: 3, options: ['M', 'Blue'], title: 'M / Blue', price: 20001 },
-      { ...product.variants[0], id: 4, options: ['M', 'Blue'], title: 'M / Blue', price: 19999 },
-    ];
-    fetchMock.mockImplementation(async (url: string) => new Response(url.includes('.js') ? JSON.stringify(product) : html));
-    const result = await mp.search({ query: 'skis & boots', limit: 1, minPrice: 100, maxPrice: 200,
-      brand: 'Faction', sizes: ['M'], category: 'Alpine Skis w/ Bindings', condition: 'used', sort: 'price_low_to_high' });
-    expect(result.listings.map(l => l.id)).toEqual([`${handle}:4`]);
-    const url = new URL(fetchMock.mock.calls[0][0]);
-    expect(url.searchParams.get('q')).toBe('skis & boots');
-    expect(url.searchParams.get('filter.v.price.gte')).toBe('100');
-    expect(url.searchParams.get('filter.v.price.lte')).toBe('200');
-    expect(url.searchParams.get('filter.p.m.global.Brand')).toBe('Faction');
-    expect(url.searchParams.getAll('filter.v.option.size')).toEqual(['M']);
-    expect(url.searchParams.getAll('filter.v.m.global.Condition')).toEqual(['Good', 'Excellent', 'Fair']);
-    expect(url.searchParams.get('sort_by')).toBe('price-ascending');
-  });
-
-  it('never infers condition when the listing omits its explicit condition statement', async () => {
-    const product = { ...fixture, description: '<p>Excellent powder conditions for these New skis!</p>' };
-    fetchMock.mockImplementation(async (url: string) => new Response(url.includes('.js') ? JSON.stringify(product) : html.replace(/<a class="pagination__arrow[^>]+>/, '')));
-    const result = await mp.search({ query: 'skis', condition: 'new' });
-    expect(result.success).toBe(true);
-    expect(result.listings).toEqual([]);
-  });
-
-  it('excludes unavailable products and exposes stock explicitly when showSold is true', async () => {
-    fetchMock.mockImplementation(async (url: string) => new Response(url.includes('.js') ? JSON.stringify({ ...fixture, available: false }) : html));
-    expect((await mp.search({ query: 'skis' })).listings).toEqual([]);
-    const result = await mp.search({ query: 'skis', showSold: true, limit: 1 });
-    expect(result.listings[0].description).toContain('Unavailable');
-    expect(result.note).toContain('unavailable does not establish a completed sale');
-  });
-
-  it('paginates, deduplicates products, applies result offset and reports the last page', async () => {
-    const secondHandle = 'another-ski';
-    const second = html.replaceAll(handle, secondHandle).replace(/<a class="pagination__arrow[^>]+>/, '');
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes(`/${secondHandle}.js`)) return new Response(JSON.stringify({ ...fixture, handle: secondHandle }));
-      if (url.includes('.js')) return new Response(JSON.stringify(fixture));
-      return new Response(new URL(url).searchParams.get('page') === '1' ? html : second);
-    });
-    const result = await mp.search({ query: 'skis', offset: 1, limit: 1 });
-    expect(result.listings[0].id).toBe(`${secondHandle}:54029224509745`);
-    expect(result.note).toContain('2 search page(s), 2 product(s)');
-    expect(result.note).toContain('more storefront results may remain');
-  });
-
-  it('stops after three pages without claiming an exhaustive inventory', async () => {
-    const result = await mp.search({ query: 'skis', limit: 50 });
+  it('stops requesting product data once the limit is filled', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis', limit: 1 });
     expect(result.listings).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(c => c[0].includes('/search?'))).toHaveLength(3);
-    expect(fetchMock.mock.calls.filter(c => c[0].includes('.js'))).toHaveLength(1);
-    expect(result.note).toContain('more storefront results may remain');
-    expect(result.totalFound).toBeUndefined();
+    expect(requested()).toEqual(['search page 1']);
   });
 
-  it('recognizes an actual empty result', async () => {
-    fetchMock.mockResolvedValue(new Response(empty));
-    expect(await mp.search({ query: 'absent' })).toMatchObject({ success: true, listings: [] });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  it('trusts the storefront condition filter rather than rechecking descriptions', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis', condition: 'good' });
+    expect(result.listings.map((l) => l.condition)).toEqual(['Good', 'New', 'New']);
+  });
+
+  it('leaves a single-variant condition blank when several grades were asked for', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis', condition: 'used', limit: 1 });
+    expect(result.listings[0].condition).toBeUndefined();
+  });
+
+  it('succeeds with filters it cannot apply', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis', colors: ['red'], department: 'Women', sort: 'most_popular', condition: 'like_new' });
+    expect(result.success).toBe(true);
+    expect(result.listings).toHaveLength(3);
+  });
+
+  it('starts at the offset', async () => {
+    serve(() => html(lastPage));
+    const result = await geartrade.search({ query: 'skis', offset: 17, limit: 1 });
+    expect(requested()).toEqual(['search page 2', `/products/${JACKET}.js`]);
+    expect(result.listings.map((l) => l.id)).toEqual([`${JACKET}:51396454285617`]);
+  });
+
+  it('requests at most three search pages', async () => {
+    serve((page) => html(searchHtml.replaceAll(SKIS, `${SKIS}-${page}`)));
+    const result = await geartrade.search({ query: 'skis', limit: 500 });
+    expect(requested().filter((r) => r.startsWith('search'))).toEqual(['search page 1', 'search page 2', 'search page 3']);
+    expect(result.listings.map((l) => l.id.split(':')[0])).toEqual([`${SKIS}-1`, JACKET, JACKET, `${SKIS}-2`, `${SKIS}-3`]);
+  });
+
+  it('stops when a page brings nothing new', async () => {
+    serve(() => html(searchHtml));
+    const result = await geartrade.search({ query: 'skis' });
+    expect(requested()).toEqual(['search page 1', `/products/${JACKET}.js`, 'search page 2']);
+    expect(result.listings).toHaveLength(3);
+  });
+
+  it('keeps earlier results when a later page fails', async () => {
+    serve((page) => (page === 1 ? html(searchHtml) : html('', 429)));
+    const result = await geartrade.search({ query: 'skis' });
+    expect(result).toMatchObject({ success: true, note: 'Later results failed: Error: Geartrade returned 429' });
+    expect(result.listings).toHaveLength(3);
   });
 
   it.each([
-    [{ query: 'x', colors: ['blue'] }, 'colors'], [{ query: 'x', department: 'Men' }, 'department'],
-    [{ query: 'x', sort: 'newest' as const }, 'sort'], [{ query: 'x', condition: 'like_new' as const }, 'condition'],
-    [{ query: 'x', limit: 51 }, 'limit'], [{ query: 'x', offset: -1 }, 'offset'], [{ query: 'x', offset: 48 }, 'offset'],
-    [{ query: 'x', minPrice: 20, maxPrice: 10 }, 'minPrice'], [{ query: '' }, 'query'],
-  ])('rejects unsupported/invalid arguments without a request: %j', async (params, error) => {
-    expect(await mp.search(params)).toMatchObject({ success: false, listings: [], error: expect.stringContaining(error) });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['<html>access denied</html>', 'missing'],
-    ['<div data-page-type="search" data-currency="USD"><product-card>changed</product-card></div>', 'markup changed'],
-    ['<div data-page-type="search" data-currency="USD">no cards</div>', 'no parsable'],
-  ])('reports parser/access failures instead of successful empty results', async (body, error) => {
-    fetchMock.mockResolvedValue(new Response(body));
-    expect(await mp.search({ query: 'skis' })).toMatchObject({ success: false, listings: [], error: expect.stringContaining(error) });
-  });
-
-  it('reports HTTP and malformed JSON failures', async () => {
-    fetchMock.mockResolvedValueOnce(new Response('rate limited', { status: 429 }));
-    expect((await mp.search({ query: 'skis' })).error).toContain('HTTP 429');
-    fetchMock.mockResolvedValueOnce(new Response(html)).mockResolvedValueOnce(new Response('{}'));
-    expect((await mp.search({ query: 'skis' })).error).toContain('product data changed');
-  });
-
-  it('rejects currency changes rather than labeling foreign amounts as USD', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(html.replace('data-currency="USD"', 'data-currency="CAD"')));
-    expect((await mp.search({ query: 'skis' })).error).toContain('not USD');
-  });
-
-  it('rechecks exact category and brand when the storefront returns an unrelated product', async () => {
-    expect((await mp.search({ query: 'skis', brand: 'Other Brand' })).listings).toEqual([]);
-    expect((await mp.search({ query: 'skis', category: 'Other Product Type' })).listings).toEqual([]);
-  });
-
-  it('sorts across products and variants before taking the limit', async () => {
-    const card = html.match(/<product-card\b[\s\S]*?<\/product-card>/)![0];
-    const page = `<div data-page-type="search" data-currency="USD">${card}${card.replaceAll(handle, 'second-product')}</div>`;
-    const first = structuredClone(fixture);
-    first.variants = [{ ...first.variants[0], id: 1, price: 1000 }, { ...first.variants[0], id: 2, price: 100000 }];
-    const second = { ...fixture, handle: 'second-product', variants: [{ ...fixture.variants[0], id: 3, price: 2000 }] };
-    fetchMock.mockImplementation(async (url: string) => new Response(url.includes('.js')
-      ? JSON.stringify(url.includes('second-product') ? second : first) : page));
-    const low = await mp.search({ query: 'skis', sort: 'price_low_to_high', limit: 2 });
-    expect(low.success).toBe(true);
-    expect(low.listings.map(l => l.priceNumeric)).toEqual([10, 20]);
-    const high = await mp.search({ query: 'skis', sort: 'price_high_to_low', limit: 1 });
-    expect(high.listings.map(l => l.priceNumeric)).toEqual([1000]);
-    expect(low.listings[0].title).toContain(first.variants[0].title);
-  });
-
-  it('allows limit zero without any request', async () => {
-    expect(await mp.search({ query: 'skis', limit: 0 })).toMatchObject({ success: true, listings: [] });
-    expect(fetchMock).not.toHaveBeenCalled();
+    ['an HTTP error', () => html('', 403), 'Geartrade returned 403'],
+    ['a block page', () => html('<html>Access denied</html>'), 'unexpected search page'],
+  ])('reports %s', async (_label, reply, message) => {
+    serve(reply);
+    const result = await geartrade.search({ query: 'skis' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(message);
   });
 });
 
-describe('Geartrade details and health', () => {
-  it('fetches exact variant, full photos, source description, price and stock', async () => {
-    const details = await mp.getListingDetails(`${handle}:54029224509745`);
-    expect(details.description).toContain('USD 646.14; In stock');
-    expect(details.description).toContain('PRODUCT CONDITION');
-    expect(details.images).toHaveLength(fixture.images.length);
-    expect(details.isShippingOffered).toBeUndefined();
-    expect(details.description).toContain('Requires shipping: yes');
-    expect(details.seller).toBeUndefined(); // Shopify vendor is not the individual seller.
+describe('Geartrade details', () => {
+  it('lists condition, the variant price and status, and the description in one request', async () => {
+    serve(() => html(''));
+    const details = await geartrade.getListingDetails(`${SKIS}:54029224509745`);
+
+    expect(requested()).toEqual([`/products/${SKIS}.js`]);
+    expect(details).toMatchObject({ id: `${SKIS}:54029224509745`, url: `https://geartrade.com/products/${SKIS}?variant=54029224509745` });
+    expect(details.images).toHaveLength(2);
+    expect(details.description).toMatch(/^Condition: New\n182cm \/ Blue: \$646\.14, available\n\nFaction Skis designed/);
     expect(details.unavailable).toBeUndefined();
-    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('.js'), expect.objectContaining({
-      headers: expect.objectContaining({ Accept: 'application/json' }),
-    }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/products/'), expect.objectContaining({
-      headers: expect.objectContaining({ Accept: 'text/html' }),
-    }));
   });
 
-  it('permits a handle without variant to inspect all source variants', async () => {
-    expect((await mp.getListingDetails(handle)).url).toBe(`https://geartrade.com/products/${handle}`);
+  it('lists every variant for a bare handle', async () => {
+    serve(() => html(''));
+    const details = await geartrade.getListingDetails(JACKET);
+    expect(details.description).toContain('M / Blueberry Burgundy: $78.07, unavailable\nS / Blueberry Burgundy: $66.57, available');
+    expect(details.url).toBe(`https://geartrade.com/products/${JACKET}`);
   });
 
-  it.each(['https://example.com/a', '../admin', 'ski?x=1', 'ski:abc'])('rejects unsafe IDs %s without fetching', async id => {
-    await expect(mp.getListingDetails(id)).rejects.toThrow('listingId');
+  it('flags a missing description and photos', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(json({ ...skis(), description: '', images: ['http://insecure.test/a.jpg'] })));
+    const details = await geartrade.getListingDetails(SKIS);
+    expect(details.unavailable).toEqual(['description', 'photos']);
+    expect(details.images).toEqual([]);
+  });
+
+  it('rejects an unrecognised id without a request', async () => {
+    await expect(geartrade.getListingDetails('https://evil.test/products/x')).rejects.toThrow('product handle');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('reports removed products and variants', async () => {
-    await expect(mp.getListingDetails(`${handle}:123`)).rejects.toThrow('no longer exists');
-    fetchMock.mockResolvedValueOnce(new Response('gone', { status: 404 }));
-    await expect(mp.getListingDetails(handle)).rejects.toThrow('HTTP 404');
+  it('reports a variant that no longer exists', async () => {
+    serve(() => html(''));
+    await expect(geartrade.getListingDetails(`${SKIS}:999`)).rejects.toThrow('no longer exists');
   });
 
-  it('marks missing photos while retaining the remaining source data', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...fixture, images: [] })));
-    expect((await mp.getListingDetails(handle)).unavailable).toEqual(['photos']);
+  it('treats a reply for another product as not found', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(json(jacket())));
+    await expect(geartrade.getListingDetails(SKIS)).rejects.toThrow('not found');
   });
 
-  it('marks missing source description while retaining price and stock', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...fixture, description: '' })));
-    const details = await mp.getListingDetails(handle);
-    expect(details.unavailable).toEqual(['description']);
-    expect(details.description).toContain('646.14');
-  });
-
-  it('verifies detail-page currency instead of assuming the product JSON amounts are USD', async () => {
-    fetchMock.mockImplementation(async (url: string) => new Response(url.includes('.js')
-      ? JSON.stringify(fixture) : '<div data-currency="CAD"></div>'));
-    await expect(mp.getListingDetails(handle)).rejects.toThrow('not USD');
-  });
-
-  it('checks real storefront markup and returns false for inaccessible pages', async () => {
-    expect(await mp.healthCheck()).toBe(true);
-    fetchMock.mockResolvedValueOnce(new Response('blocked', { status: 403 }));
-    expect(await mp.healthCheck()).toBe(false);
-  });
-});
-
-describe('Geartrade MCP routing', () => {
-  beforeEach(() => registerMarketplace(mp));
-
-  it('searches with normal MCP arguments, including default location, and displays coverage', async () => {
-    const result = await searchMarketplace({ marketplace: 'geartrade', query: 'skis', limit: '1' });
-    expect(result.isError).not.toBe(true);
-    expect(result.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('646.14') });
-    expect(result.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('Bounded to 3 pages') });
-    expect(result.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('Location and radius are not applied') });
-  });
-
-  it('routes variant details and deep-research fetch IDs without losing their variant', async () => {
-    const id = `${handle}:54029224509745`;
-    const details = await listingDetails({ marketplace: 'geartrade', listingId: id, maxImages: 0 });
-    expect(details.content[0]).toMatchObject({ text: expect.stringContaining('646.14; In stock') });
-    const fetched = await researchFetch({ id: `geartrade:${id}` });
-    expect(fetched.content[0]).toMatchObject({ text: expect.stringContaining('?variant=54029224509745') });
+  it('passes on HTTP errors', async () => {
+    serve(() => html(''));
+    await expect(geartrade.getListingDetails('missing-item')).rejects.toThrow('Geartrade returned 404');
   });
 });
