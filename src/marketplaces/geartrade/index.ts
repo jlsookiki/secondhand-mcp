@@ -70,9 +70,19 @@ export class GeartradeMarketplace extends BaseMarketplace {
   }
 
   private async cardListings(card: Card, params: SearchParams, condition: string | undefined, deadline: AbortSignal): Promise<Listing[]> {
-    if (card.variants.length > 1) return productListings(await this.product(card.handle, deadline), card.handle, params);
+    if (card.variants.length > 1) return this.variantListings(card, params, deadline);
     const listing = cardListing(card, condition);
     return listing ? [listing] : [];
+  }
+
+  /** One product that fails to load costs only its own listings, unless the whole search has run out of time. */
+  private async variantListings(card: Card, params: SearchParams, deadline: AbortSignal): Promise<Listing[]> {
+    try {
+      return productListings(await this.product(card.handle, deadline), card.handle, params);
+    } catch (error) {
+      if (deadline.aborted) throw error;
+      return [];
+    }
   }
 
   private async product(handle: string, deadline?: AbortSignal): Promise<Product> {

@@ -248,6 +248,13 @@ describe('Geartrade search', () => {
     expect(result.listings).toHaveLength(3);
   });
 
+  it('skips a card whose product data fails and keeps the rest of the page', async () => {
+    fetchMock.mockImplementation((url: URL) => Promise.resolve(url.pathname === '/search' ? html(lastPage) : json({}, 500)));
+    const result = await geartrade.search({ query: 'skis' });
+    expect(result).toMatchObject({ success: true });
+    expect(result.listings.map((l) => l.id)).toEqual([`${SKIS}:54029224509745`]);
+  });
+
   it.each([
     ['an HTTP error', () => html('', 403), 'Geartrade returned 403'],
     ['a block page', () => html('<html>Access denied</html>'), 'unexpected search page'],
