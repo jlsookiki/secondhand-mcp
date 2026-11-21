@@ -46,6 +46,7 @@ export interface ProductPage {
 
 export interface ProductJsonLd {
   '@type'?: string;
+  name?: string;
   url?: string;
   description?: string | null;
   image?: string | string[];

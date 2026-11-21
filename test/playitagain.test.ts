@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayItAgainMarketplace, clampCount, totalFound } from '../src/marketplaces/playitagain/index.js';
 import { currencyOf, pageData, productJsonLd, productPath, resultCount, summaryListing } from '../src/marketplaces/playitagain/parse.js';
 import { matchesFilters, searchUrl } from '../src/marketplaces/playitagain/query.js';
+import { registerMarketplace } from '../src/marketplaces/index.js';
+import { researchFetch } from '../src/tools/deep-research.js';
 import type { Product, SearchPage } from '../src/marketplaces/playitagain/wire.js';
 import type { Listing } from '../src/types.js';
 
@@ -17,6 +19,8 @@ const catcher = (): Product => products()[0];
 const canadianMask = (): Product => products()[1];
 
 const CATCHER_PATH = '/locations/leominster-ma/product/S000152950/Bauer-SUPREME-Jr';
+const CATCHER_NAME = 'Used Bauer SUPREME Junior Goalie Catcher Black 11722-S000152950';
+const MASK_PATH = '/locations/whitby-on/product/CCM-AXIS-F5-GOALIE-MASK/GHH-CCM-AXIS-F5-GOALIE-MASK-SR-WHT';
 
 function productAt(n: number): Product {
   return { ...catcher(), id: n, url: `/locations/boston-ma/product/S${n}/Bat` };
@@ -334,6 +338,26 @@ describe('Play It Again Sports details', () => {
     const details = await playitagain.getListingDetails(CATCHER_PATH);
     expect(details.images).toEqual([]);
     expect(details.unavailable).toBeUndefined();
+  });
+
+  it('names the product on the first line', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('product'))));
+    const details = await playitagain.getListingDetails(CATCHER_PATH);
+    expect(details.description!.split('\n').slice(0, 2)).toEqual([CATCHER_NAME, 'Price: $39.99']);
+  });
+
+  it('names a product that has no seller description', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('variant-product'))));
+    const details = await playitagain.getListingDetails(MASK_PATH);
+    expect(details.description!.split('\n')[0]).toBe('New CCM CCM AXIS F5 GOALIE MASK Senior Goalie Helmet/Mask 11891-CCM-AXIS-F5-GOALIE-MASK');
+  });
+
+  it('gives the research fetch the product name as its title', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('product'))));
+    registerMarketplace(playitagain);
+    const reply = await researchFetch({ id: `playitagain:${CATCHER_PATH}` });
+    const document = JSON.parse((reply.content[0] as { text: string }).text);
+    expect(document.title).toBe(CATCHER_NAME);
   });
 
   it('rejects an unrecognised id without a request', async () => {

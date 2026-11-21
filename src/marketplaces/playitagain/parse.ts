@@ -87,7 +87,8 @@ export function productDetails(html: string, path: string): ListingDetails | und
   const store = product?.brand?.name;
   const sellerDescription = plainText(product?.description);
   const images = galleryPhotos(html, product);
-  const facts = [askingPrice(page.productPrice, currencyOf(fields)), ...stockStatus(page), ...fieldLines(fields)];
+  const name = product?.name?.trim();
+  const facts = [...(name ? [name] : []), askingPrice(page.productPrice, currencyOf(fields)), ...stockStatus(page), ...fieldLines(fields)];
   const shipping = fieldValue(fields, 'Standard Shipping');
   return {
     id: path,
