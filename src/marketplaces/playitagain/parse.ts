@@ -1,6 +1,6 @@
 import { convert } from 'html-to-text';
 import { Listing, ListingDetails } from '../../types.js';
-import { Field, Price, Product, ProductJsonLd, ProductPage } from './wire.js';
+import { Field, isField, isPhoto, isProductJsonLd, isProductPage, Price, Product, ProductJsonLd, ProductPage } from './wire.js';
 
 export const SITE = 'https://playitagainsports.com';
 
@@ -33,12 +33,16 @@ export function productPath(input: string): string | undefined {
 }
 
 /** Reads the JSON the storefront embeds as a string literal, without running any of the page's scripts. */
-export function pageData<T>(html: string): T | undefined {
+export function pageData(html: string): unknown {
   const literal = html.match(PAGE_DATA)?.[1];
   if (!literal) return undefined;
   const data = parseJson(literal);
-  const decoded = typeof data === 'string' ? parseJson(data) : undefined;
-  return decoded && typeof decoded === 'object' ? (decoded as T) : undefined;
+  return typeof data === 'string' ? parseJson(data) : undefined;
+}
+
+/** Keeps the well-formed entries of a custom field list, so one bad field doesn't hide the rest. */
+export function fieldsOf(value: unknown): Field[] {
+  return Array.isArray(value) ? value.filter(isField) : [];
 }
 
 /** Canadian stores report their prices as USD in the page data, so the currency comes from the product's Country field. */
@@ -51,8 +55,9 @@ export function summaryListing(product: Product): Listing | undefined {
   const title = product.name?.trim();
   if (!id || !title) return undefined;
 
+  const fields = fieldsOf(product.custom_fields);
   const price = priceOf(product.price);
-  const currency = currencyOf(product.custom_fields);
+  const currency = currencyOf(fields);
   const priced = price !== undefined && currency !== undefined;
   const store = product.brand?.name;
   return {
@@ -65,7 +70,7 @@ export function summaryListing(product: Product): Listing | undefined {
     description: product.summary?.trim() || undefined,
     location: store,
     seller: store,
-    condition: fieldValue(product.custom_fields, 'Condition') || undefined,
+    condition: fieldValue(fields, 'Condition') || undefined,
     marketplace: 'playitagain',
     scrapedAt: new Date().toISOString(),
   };
@@ -81,11 +86,11 @@ export function resultCount(summary: string | undefined): number | undefined {
 }
 
 export function productDetails(html: string, path: string): ListingDetails | undefined {
-  const page = pageData<ProductPage>(html);
-  if (page?.template !== 'pages/product' || !page.productUrl || productPath(page.productUrl) !== path) return undefined;
+  const page = pageData(html);
+  if (!isProductPage(page) || productPath(page.productUrl) !== path) return undefined;
 
   const product = productJsonLd(html, path);
-  const fields = page.customFields ?? [];
+  const fields = fieldsOf(page.customFields);
   const store = product?.brand?.name;
   const sellerDescription = plainText(product?.description);
   const images = galleryPhotos(html, product);
@@ -108,8 +113,8 @@ export function productJsonLd(html: string, path: string): ProductJsonLd | undef
   for (const [, body] of html.matchAll(JSON_LD)) {
     // The storefront leaves the value out entirely when a product has no description.
     const parsed = parseJson(body.replace(EMPTY_DESCRIPTION, '"description": null'));
-    const nodes = (Array.isArray(parsed) ? parsed : [parsed]) as (ProductJsonLd | null)[];
-    const product = nodes.find((node) => node?.['@type'] === 'Product' && node.url && productPath(node.url) === path);
+    const nodes = Array.isArray(parsed) ? parsed : [parsed];
+    const product = nodes.filter(isProductJsonLd).find((node) => productPath(node.url) === path);
     if (product) return product;
   }
   return undefined;
@@ -165,15 +170,15 @@ function plainText(html: string | null | undefined): string {
 }
 
 function searchPhotos(product: Product): string[] {
-  const images = [...(product.images ?? []), ...(product.image ? [product.image] : [])];
-  const urls = images.map((image) => image?.data?.replace(PHOTO_SIZE_PLACEHOLDER, FULL_SIZE));
+  const images = [...(product.images ?? []), product.image];
+  const urls = images.map((image) => (isPhoto(image) ? image.data.replace(PHOTO_SIZE_PLACEHOLDER, FULL_SIZE) : undefined));
   return uniqueHttps(urls);
 }
 
 function galleryPhotos(html: string, product: ProductJsonLd | undefined): string[] {
-  const listed = [product?.image ?? []].flat();
+  const listed: unknown[] = [product?.image ?? []].flat();
   const gallery = [...html.matchAll(GALLERY_PHOTO)].map(([, url]) => url.replaceAll('&amp;', '&'));
-  const urls = [...listed, ...gallery].filter((url) => typeof url === 'string');
+  const urls = [...listed, ...gallery].filter((url): url is string => typeof url === 'string');
   return uniqueHttps(urls.map((url) => url.replace(PHOTO_SIZE, `/stencil/${FULL_SIZE}/`)));
 }
 

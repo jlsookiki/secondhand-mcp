@@ -5,7 +5,7 @@ import { currencyOf, descriptiveFieldLines, pageData, productJsonLd, productPath
 import { matchesFilters, searchUrl } from '../src/marketplaces/playitagain/query.js';
 import { registerMarketplace } from '../src/marketplaces/index.js';
 import { researchFetch } from '../src/tools/deep-research.js';
-import type { Product, SearchPage } from '../src/marketplaces/playitagain/wire.js';
+import { isProduct, isSearchPage, type Product } from '../src/marketplaces/playitagain/wire.js';
 import type { Listing } from '../src/types.js';
 
 type FixtureName = 'search' | 'product' | 'variant-product' | 'canadian-product';
@@ -14,7 +14,11 @@ function fixture(name: FixtureName): string {
   return readFileSync(new URL(`./fixtures/playitagain/${name}.html`, import.meta.url), 'utf8');
 }
 
-const products = (): Product[] => pageData<SearchPage>(fixture('search'))!.searchProducts!;
+function products(): Product[] {
+  const page = pageData(fixture('search'));
+  if (!isSearchPage(page)) throw new Error('search fixture has no search page data');
+  return page.searchProducts.filter(isProduct);
+}
 const catcher = (): Product => products()[0];
 const canadianMask = (): Product => products()[1];
 
@@ -248,6 +252,30 @@ describe('Play It Again Sports search', () => {
     expect(result.listings.map((l) => l.id)).toEqual(['/locations/boston-ma/product/S3/Bat']);
   });
 
+  it('skips a wrongly typed product without failing the page', async () => {
+    const rows = [
+      { ...productAt(4), custom_fields: {} },
+      { ...productAt(5), name: 7 },
+      { ...productAt(6), url: 9 },
+      { ...productAt(7), summary: ['x'] },
+      { ...productAt(8), availability: 1 },
+      { ...productAt(9), brand: 'Bauer' },
+      productAt(3),
+    ];
+    fetchMock.mockImplementation(() => Promise.resolve(html(searchPage(rows))));
+    const result = await playitagain.search({ query: 'bat' });
+    expect(result.success).toBe(true);
+    expect(result.listings.map((l) => l.id)).toEqual(['/locations/boston-ma/product/S3/Bat']);
+  });
+
+  it('ignores a wrongly typed field or photo inside a good product', async () => {
+    const row = { ...productAt(10), custom_fields: [{ name: 'Condition', value: 5 }, ...catcher().custom_fields!], images: [{ data: 3 }] };
+    fetchMock.mockImplementation(() => Promise.resolve(html(searchPage([row]))));
+    const result = await playitagain.search({ query: 'bat' });
+    expect(result.listings).toHaveLength(1);
+    expect(result.listings[0]).toMatchObject({ price: '$39.99', condition: 'Used' });
+  });
+
   it('applies the offset to matching listings and pages until the limit is filled', async () => {
     fetchMock
       .mockImplementationOnce(() => Promise.resolve(html(searchPage([productAt(1), productAt(2)], 2, 4))))
@@ -394,6 +422,14 @@ describe('Play It Again Sports details', () => {
     const reply = await researchFetch({ id: `playitagain:${CATCHER_PATH}` });
     const document = JSON.parse((reply.content[0] as { text: string }).text);
     expect(document.title).toBe(CATCHER_NAME);
+  });
+
+  it('loads a product page whose fields are wrongly typed', async () => {
+    const data = { template: 'pages/product', productUrl: CATCHER_PATH, customFields: { Condition: 'Used' }, isInStock: true };
+    const page = `<script>window.stencilBootstrap("product", ${JSON.stringify(JSON.stringify(data))});</script>`;
+    fetchMock.mockImplementation(() => Promise.resolve(html(page)));
+    const details = await playitagain.getListingDetails(CATCHER_PATH);
+    expect(details.description).toBe('Price: not listed\nStatus: in stock');
   });
 
   it('rejects an unrecognised id without a request', async () => {

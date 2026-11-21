@@ -9,7 +9,7 @@ import { BaseMarketplace } from '../base.js';
 import { Listing, ListingDetails, SearchParams, SearchResult } from '../../types.js';
 import { isInStock, pageData, productDetails, productPath, resultCount, SITE, summaryListing } from './parse.js';
 import { hasListingFilters, matchesFilters, searchUrl } from './query.js';
-import { Product, SearchPage } from './wire.js';
+import { isProduct, isSearchPage } from './wire.js';
 
 const STOREFRONT_PAGE_SIZE = 12;
 const MAX_PAGES = 10;
@@ -34,8 +34,8 @@ export class PlayItAgainMarketplace extends BaseMarketplace {
 
     try {
       for (let page = 1; page <= MAX_PAGES && matches.length < offset + limit; page++) {
-        const data = pageData<SearchPage>(await this.get(searchUrl(params, page), deadline));
-        if (data?.template !== 'pages/search' || !Array.isArray(data.searchProducts)) {
+        const data = pageData(await this.get(searchUrl(params, page), deadline));
+        if (!isSearchPage(data)) {
           throw new Error('Play It Again Sports returned an unexpected search page');
         }
 
@@ -86,10 +86,11 @@ export function totalFound(count: number | undefined, params: SearchParams): num
   return count;
 }
 
-function unseenListings(rows: Product[], seen: Set<string>): Listing[] {
+function unseenListings(rows: unknown[], seen: Set<string>): Listing[] {
   const listings: Listing[] = [];
   for (const row of rows) {
-    const listing = row ? summaryListing(row) : undefined;
+    if (!isProduct(row)) continue;
+    const listing = summaryListing(row);
     if (!listing || seen.has(listing.id)) continue;
     seen.add(listing.id);
     if (isInStock(row)) listings.push(listing);
