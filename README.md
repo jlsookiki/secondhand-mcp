@@ -3,7 +3,7 @@
 
 # Secondhand MCP
 
-A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, Poshmark, and Play It Again Sports for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants search secondhand marketplaces. Search Facebook Marketplace, eBay, Depop, and Poshmark for used and secondhand items — filter by price, category, condition, size, and color, then get full listing details with photos, descriptions, and seller info.
 
 Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP servers locally.
 
@@ -18,7 +18,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | ChatGPT, Claude, and other assistants | — | ✅ |
 | Searching from your phone | — | ✅ |
 | Chrome running in the background | needed | not needed |
-| Price | free, forever | free tier, then $4.99 | USD/CAD; starting price if options |
+| Price | free, forever | free tier, then $4.99 |
 
 ## Supported Marketplaces
 
@@ -28,29 +28,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | eBay | Yes (API keys) | Official Browse API |
 | Depop | No | Requires Chrome installed |
 | Poshmark | No | Requires Chrome installed |
-| Play It Again Sports | No | Public online sporting-goods inventory; no Chrome required |
-
-### Play It Again Sports
-
-Use `marketplace: "playitagain"` for public online inventory from participating stores. No account, API key, or browser is required. Search results include both new and used equipment; use `condition: "used"` to restrict to listings explicitly marked used.
-
-```json
-{
-  "marketplace": "playitagain",
-  "query": "bauer goalie mask",
-  "condition": "used",
-  "maxPrice": 500,
-  "limit": 20
-}
-```
-
-Search follows actual storefront pages (at most ten pages per call, with a 45-second overall deadline and 20-second per-request timeout). `limit` and `offset` range from 0 to 120; offset counts matched listings after filtering. Overlapping page listings are deduplicated. Coverage notes report pages inspected and remaining inventory; `totalFound` is the site's unfiltered query count, not a count of verified matches. Filters can leave fewer than `limit` results when the page budget is reached.
-
-- Price bounds are **USD-only** and exclude Canadian-store listings. Without bounds, both USD and CAD listings are returned with explicit currency prefixes. The site initially labels some Canadian products USD in its server HTML, then switches currency in the browser; this adapter uses the product's `Country` custom field for store-native USD/CAD. No currency conversion is performed. Prices exclude tax and shipping. Listings with selectable options show starting prices and require checking the desired option and final price. Price sorting uses nominal amounts rather than exchange rates.
-- Supported sorts: relevance, newest, price ascending, and price descending. Condition filters: new, used, or any. Brand, size, color, and category filters match structured fields case-insensitively; use site field values (for example `Size: M`). The equipment brand is `Product Brand`; the site's `brand` field identifies the store. Missing fields do not qualify for a requested filter.
-- Location does not restrict the search geographically. Radius, department, sold-inventory, popularity sorting, and finer condition grades are unsupported and produce explicit errors.
-- Pass the returned product-path **ID** (such as `/locations/leominster-ma/product/S000152950/Bauer-SUPREME-Jr`) or its full product URL to `get_listing_details`. Numeric storefront IDs alone are insufficient. Details include SKU, available custom fields, store, full-size gallery images, and fulfillment options only when explicitly listed. Out-of-stock, removed, blocked, or malformed product pages return errors.
-- Stock is checked at detail-fetch time, not guaranteed by a search result. Online inventory does not cover every store's physical stock. Listed dates and age-group fields are not evidence of equipment manufacture dates. Store-specific shipping and cross-border eligibility still need confirmation.
+| Play It Again Sports | No | New and used sporting goods from store inventory; opt-in via `MARKETPLACES` |
 
 ## Setup
 
@@ -108,7 +86,7 @@ The browser runs invisibly in the background and only launches when you actually
 
 ### Choosing Marketplaces
 
-By default all marketplaces are enabled. To limit which are active, set the `MARKETPLACES` env var (comma-separated):
+By default Facebook, eBay, Depop and Poshmark are enabled. To choose which are active, set the `MARKETPLACES` env var (comma-separated):
 
 ```json
 {
@@ -119,6 +97,8 @@ By default all marketplaces are enabled. To limit which are active, set the `MAR
 ```
 
 Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `playitagain`
+
+Play It Again Sports is only enabled when listed here.
 
 ### eBay API Keys
 
@@ -167,13 +147,13 @@ Search for items across marketplaces.
 | `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `playitagain`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
-| `maxPrice` | No | | Maximum price |
-| `minPrice` | No | | Minimum price |
+| `maxPrice` | No | | Maximum price (Play It Again Sports: US stores only) |
+| `minPrice` | No | | Minimum price (Play It Again Sports: US stores only) |
 | `limit` | No | `20` | Max results |
 | `showSold` | No | `false` | Include sold items (Facebook only) |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair` |
+| `sort` | No | `relevance` | Sort order (Depop, Poshmark, Play It Again Sports): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. Play It Again Sports: `new`, `used` |
 | `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark only): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
@@ -182,14 +162,14 @@ Search for items across marketplaces.
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay | Depop | Poshmark | Play It Again Sports |
-|-------|----------|------|-------|----------|----------------------|
-| Title | Yes | Yes | Yes | Yes | Yes |
-| Price | Yes | Yes | Yes | Yes | USD/CAD; starting price if options |
-| Location | City | City, State | — | — | Store name/location |
-| Condition | — | Yes | — | — | When listed |
-| Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail | Full gallery |
-| Seller | Yes | Yes | — | — | Store |
+| Field | Facebook | eBay | Depop | Poshmark |
+|-------|----------|------|-------|----------|
+| Title | Yes | Yes | Yes | Yes |
+| Price | Yes | Yes | Yes | Yes |
+| Location | City | City, State | — | — |
+| Condition | — | Yes | — | — |
+| Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail |
+| Seller | Yes | Yes | — | — |
 
 ### `get_listing_details`
 
@@ -202,14 +182,14 @@ Get full details for a specific listing using an ID from search results.
 
 **Data returned per marketplace:**
 
-| Field | Facebook | eBay | Depop | Poshmark | Play It Again Sports |
-|-------|----------|------|-------|----------|----------------------|
-| Description | Yes | Yes | Yes | Yes | When listed; custom fields/SKU/current price |
-| All photos | Yes | Yes | Yes | Yes | When listed |
-| Location | City | City, State, Country | — | — | Store name/location |
-| Seller | Name | Username | Username | Username | Store |
-| Delivery types | Yes | — | — | — | Explicit store fulfillment options |
-| Shipping | Yes/No | Service codes | Yes/No | Always included | When explicitly listed |
+| Field | Facebook | eBay | Depop | Poshmark |
+|-------|----------|------|-------|----------|
+| Description | Yes | Yes | Yes | Yes |
+| All photos | Yes | Yes | Yes | Yes |
+| Location | City | City, State, Country | — | — |
+| Seller | Name | Username | Username | Username |
+| Delivery types | Yes | — | — | — |
+| Shipping | Yes/No | Service codes | Yes/No | Always included |
 
 ### `list_marketplaces`
 
@@ -232,9 +212,9 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 **Depop** — Uses a headless browser to search listings with support for category, condition, size, and color filters. The browser instance is shared across requests.
 
-**Play It Again Sports** — Reads public server-rendered storefront data and product JSON-LD over HTTP. Reports bounded search coverage and store-native currency; details recheck stock, current price and explicit fulfillment options. See the source-specific limits above.
-
 **Poshmark** — Uses a headless browser to search listings with support for condition, size, color, sort, and price filters. Poshmark is not location-based — all items ship nationally.
+
+**Play It Again Sports** — Reads the product data embedded in the storefront's search and product pages, so no browser is needed. Supports price, new/used condition, sort and offset. Prices are in the store's currency (USD or CAD) before shipping and tax; price bounds only match US stores.
 
 ## Development
 
@@ -249,7 +229,7 @@ npm run build
 
 1. Create a new file in `src/marketplaces/`
 2. Extend `BaseMarketplace` and implement `search()` and optionally `getListingDetails()`
-3. Add the constructor to `allMarketplaces` in `src/marketplaces/index.ts`
+3. Add the constructor to `defaultMarketplaces` in `src/marketplaces/index.ts`, or to `optInMarketplaces` if it should only run when named in `MARKETPLACES`
 
 ## Limitations
 
@@ -257,6 +237,7 @@ npm run build
 - **eBay**: Requires developer API keys (free tier available)
 - **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search)
 - **Poshmark**: Requires Chrome/Chromium installed; no official API so relies on page scraping
+- **Play It Again Sports**: Reads data embedded in the storefront's pages, so it may break if the site changes them; searches at most ten pages of 12 products
 - **Rate limiting**: Don't make too many requests too quickly
 
 ## License
