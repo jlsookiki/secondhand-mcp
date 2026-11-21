@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeartradeMarketplace, resultWindow } from '../src/marketplaces/geartrade/index.js';
+import { GeartradeMarketplace, SEARCH_DEADLINE_MS, resultWindow } from '../src/marketplaces/geartrade/index.js';
 import { cardListing, conditionOf, listingRefFrom, productFrom, productListings, searchPage } from '../src/marketplaces/geartrade/parse.js';
 import { searchUrl } from '../src/marketplaces/geartrade/query.js';
 import type { Product } from '../src/marketplaces/geartrade/wire.js';
@@ -26,20 +26,39 @@ beforeEach(() => {
   geartrade = new GeartradeMarketplace();
 });
 
-/** Answers every request with a fresh Response: search pages from `pages`, product data from the fixtures. */
+/** Answers every request with a fresh Response: search pages from `pages`, product data from the fixtures. Aborted requests reject, as fetch does. */
 function serve(pages: (page: number) => Response) {
-  fetchMock.mockImplementation((url: URL) => {
-    if (url.pathname === '/search') return Promise.resolve(pages(Number(url.searchParams.get('page'))));
-    if (url.pathname.startsWith(`/products/${JACKET}`)) return Promise.resolve(json(jacket()));
-    if (url.pathname === `/products/${SKIS}.js`) return Promise.resolve(json(skis()));
-    return Promise.resolve(json({}, 404));
+  fetchMock.mockImplementation((url: URL, init?: RequestInit) => {
+    const reply = route(url, pages);
+    return init?.signal?.aborted ? Promise.reject(init.signal.reason) : Promise.resolve(reply);
   });
+}
+
+function route(url: URL, pages: (page: number) => Response): Response {
+  if (url.pathname === '/search') return pages(Number(url.searchParams.get('page')));
+  if (url.pathname.startsWith(`/products/${JACKET}`)) return json(jacket());
+  if (url.pathname === `/products/${SKIS}.js`) return json(skis());
+  return json({}, 404);
+}
+
+/** Replaces the overall search deadline with one the test expires by calling the returned function. */
+function controlledDeadline(): () => void {
+  const controller = new AbortController();
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (ms === SEARCH_DEADLINE_MS ? controller.signal : timeout(ms)));
+  return () => controller.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 }
 
 /** Three pages, each with its own single-variant skis and multi-variant jacket. */
 const distinctPages = (page: number) => {
   const markup = page < 3 ? searchHtml : lastPage;
   return html(markup.replaceAll(SKIS, `${SKIS}-${page}`).replaceAll(JACKET, `${JACKET}-${page}`));
+};
+
+/** Pages holding only a single-variant card, so no product data is requested. */
+const skisOnlyPages = (page: number) => {
+  const markup = searchHtml.replace(`"handle":"${JACKET}"`, '"handle":"other"');
+  return html(markup.replaceAll(SKIS, `${SKIS}-${page}`));
 };
 
 const requested = () => fetchMock.mock.calls.map(([url]) => {
@@ -262,6 +281,31 @@ describe('Geartrade search', () => {
     const result = await geartrade.search({ query: 'skis' });
     expect(result).toMatchObject({ success: true, note: 'Later results failed: Error: Geartrade returned 429' });
     expect(result.listings).toHaveLength(3);
+  });
+
+  it('returns the first page with a note when the deadline passes before the second', async () => {
+    const expire = controlledDeadline();
+    serve((page) => {
+      if (page === 2) expire();
+      return skisOnlyPages(page);
+    });
+    const result = await geartrade.search({ query: 'skis' });
+
+    expect(result.success).toBe(true);
+    expect(result.note).toContain('Later results failed');
+    expect(result.listings.map((l) => l.id.split(':')[0])).toEqual([`${SKIS}-1`]);
+  });
+
+  it('fails when the deadline passes before the first page arrives', async () => {
+    const expire = controlledDeadline();
+    serve((page) => {
+      expire();
+      return skisOnlyPages(page);
+    });
+    const result = await geartrade.search({ query: 'skis' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Geartrade search failed');
   });
 
   it('skips a card whose product data fails and keeps the rest of the page', async () => {

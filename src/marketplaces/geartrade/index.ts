@@ -15,7 +15,7 @@ const MAX_PAGES = 3;
 const MAX_RESULTS = PAGE_SIZE * MAX_PAGES;
 const PRODUCT_REQUESTS_AT_ONCE = 3;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SEARCH_DEADLINE_MS = 45_000;
+export const SEARCH_DEADLINE_MS = 45_000;
 
 export class GeartradeMarketplace extends BaseMarketplace {
   readonly name = 'geartrade';
