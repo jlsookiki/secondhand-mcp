@@ -20,20 +20,25 @@ export { SidelineSwapMarketplace } from './sidelineswap/index.js';
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();
 
-// All known marketplace constructors
-const allMarketplaces: Record<string, () => Marketplace> = {
+const defaultMarketplaces: Record<string, () => Marketplace> = {
   facebook: () => new FacebookMarketplace(),
   ebay: () => new EbayMarketplace(),
   depop: () => new DepopMarketplace(),
   poshmark: () => new PoshmarkMarketplace(),
+};
+
+// Niche sources stay off unless named in MARKETPLACES, so they don't slow down every "all" search.
+const optInMarketplaces: Record<string, () => Marketplace> = {
   sidelineswap: () => new SidelineSwapMarketplace(),
 };
 
+const allMarketplaces = { ...defaultMarketplaces, ...optInMarketplaces };
+
 // Register marketplaces based on MARKETPLACES env var (comma-separated).
-// If not set, all marketplaces are enabled by default.
+// If not set, the default marketplaces are enabled.
 export function initializeMarketplaces(): void {
   const envList = process.env.MARKETPLACES?.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  const enabled = envList ?? Object.keys(allMarketplaces);
+  const enabled = envList ?? Object.keys(defaultMarketplaces);
 
   for (const name of enabled) {
     const factory = allMarketplaces[name];
