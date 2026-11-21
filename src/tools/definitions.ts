@@ -18,7 +18,7 @@ type AnnotatedTool = Tool & {
 export const tools: AnnotatedTool[] = [
   {
     name: 'search_marketplace',
-    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; Geartrade needs no login, key or browser and scans at most 3 pages/48 products. Read its coverage note and inspect keyword relevance. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or general new-retail catalogs; Geartrade includes both used and new outdoor items.`,
+    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; Geartrade (used outdoor gear) needs nothing. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
     annotations: { title: 'Search Marketplace', ...READ_ONLY },
     inputSchema: {
       type: 'object',
@@ -52,12 +52,12 @@ export const tools: AnnotatedTool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results to return (default: 20). eBay paginates automatically to fetch more than 200 (eBay caps offset + limit at 10,000). Geartrade accepts 0–50 and stops at its bounded scan budget.',
+          description: 'Maximum number of results to return (default: 20). eBay paginates automatically to fetch more than 200 (eBay caps offset + limit at 10,000).',
           default: 20
         },
         offset: {
           type: 'number',
-          description: 'Starting result offset for pagination (default: 0). eBay; Geartrade applies offset to matching variants within at most 3 pages/48 products. Other marketplaces ignore it.',
+          description: 'Starting result offset for pagination (default: 0). eBay and Geartrade; other marketplaces ignore it.',
           default: 0
         },
         showSold: {
@@ -72,16 +72,16 @@ export const tools: AnnotatedTool[] = [
         },
         sort: {
           type: 'string',
-          description: 'Sort order (Depop, Poshmark; Geartrade supports only relevance and the two price sorts). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
+          description: 'Sort order (Depop, Poshmark; Geartrade: relevance and price only). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
           default: 'relevance'
         },
         condition: {
           type: 'string',
-          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Geartrade: new, good, excellent, fair, used (Good/Excellent/Fair). Use "any" for no filter.',
+          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
         },
         category: {
           type: 'string',
-          description: 'Product category. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc. Geartrade: exact storefront product type, e.g. Alpine Skis w/ Bindings.',
+          description: 'Product category. Geartrade: exact product type, e.g. Alpine Skis w/ Bindings. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
         },
         brand: {
           type: 'string',
@@ -94,7 +94,7 @@ export const tools: AnnotatedTool[] = [
         sizes: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter by sizes (Depop, Poshmark, Geartrade exact size labels). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
+          description: 'Filter by sizes (Depop, Poshmark, Geartrade). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
         },
         colors: {
           type: 'array',
