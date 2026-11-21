@@ -16,7 +16,7 @@ const MAX_PAGES = 10;
 const MAX_RESULTS = STOREFRONT_PAGE_SIZE * MAX_PAGES;
 const DEFAULT_LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 20_000;
-const SEARCH_DEADLINE_MS = 45_000;
+export const SEARCH_DEADLINE_MS = 45_000;
 const STOREFRONT_COUNT_CAP = 10_000;
 
 export class PlayItAgainMarketplace extends BaseMarketplace {

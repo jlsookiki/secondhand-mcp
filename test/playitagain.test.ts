@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlayItAgainMarketplace, clampCount, totalFound } from '../src/marketplaces/playitagain/index.js';
+import { PlayItAgainMarketplace, SEARCH_DEADLINE_MS, clampCount, totalFound } from '../src/marketplaces/playitagain/index.js';
 import { currencyOf, descriptiveFieldLines, pageData, productJsonLd, productPath, resultCount, summaryListing } from '../src/marketplaces/playitagain/parse.js';
 import { matchesFilters, searchUrl } from '../src/marketplaces/playitagain/query.js';
 import { registerMarketplace } from '../src/marketplaces/index.js';
@@ -328,6 +328,41 @@ describe('Play It Again Sports search', () => {
     const result = await playitagain.search({ query: 'bat' });
     expect(result.success).toBe(false);
     expect(result.error).toContain(message);
+  });
+});
+
+describe('Play It Again Sports search deadline', () => {
+  let deadline: AbortController;
+
+  beforeEach(() => {
+    deadline = new AbortController();
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (ms === SEARCH_DEADLINE_MS ? deadline.signal : timeout(ms)));
+  });
+
+  /** A request that only ends when its signal aborts, after the deadline is made to pass. */
+  function stalledUntilDeadline(_url: URL, init: RequestInit): Promise<Response> {
+    const signal = init.signal!;
+    const aborted = new Promise<Response>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
+    deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    return aborted;
+  }
+
+  it('fails when the deadline passes during the first page', async () => {
+    fetchMock.mockImplementation(stalledUntilDeadline);
+    const result = await playitagain.search({ query: 'bat' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('TimeoutError');
+  });
+
+  it('returns the first page with a note when the deadline passes during a later page', async () => {
+    fetchMock
+      .mockImplementationOnce(() => Promise.resolve(html(searchPage([productAt(1)], 1))))
+      .mockImplementationOnce(stalledUntilDeadline);
+    const result = await playitagain.search({ query: 'bat', limit: 3 });
+    expect(result).toMatchObject({ success: true, listings: [{ id: '/locations/boston-ma/product/S1/Bat' }] });
+    expect(result.note).toMatch(/^Later pages failed: /);
+    expect(requestedPages()).toEqual(['1', '2']);
   });
 });
 
