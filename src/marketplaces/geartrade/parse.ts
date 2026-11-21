@@ -1,5 +1,5 @@
 import { convert } from 'html-to-text';
-import { Listing, ListingDetails, ListingPart, SearchParams } from '../../types.js';
+import { Listing, ListingDetails, SearchParams } from '../../types.js';
 import { SITE } from './query.js';
 import { MetaVariant, Product, SearchMeta, Variant } from './wire.js';
 
@@ -115,16 +115,11 @@ export function productDetails(product: Product, ref: ListingRef): ListingDetail
   const description = product.description ? plainText(product.description) : '';
   const condition = conditionOf(product);
   const facts = [...(condition ? [`Condition: ${condition}`] : []), ...variants.map((variant) => variantLine(product, variant))];
-  const unavailable: ListingPart[] = [
-    ...(description ? [] : ['description' as const]),
-    ...(images.length ? [] : ['photos' as const]),
-  ];
   return {
     id: ref.variantId ? `${ref.handle}:${ref.variantId}` : ref.handle,
     url: ref.variantId ? variantUrl(ref.handle, ref.variantId) : `${SITE}/products/${ref.handle}`,
     images,
     description: [...facts, ...(description ? ['', description] : [])].join('\n'),
-    ...(unavailable.length && { unavailable }),
   };
 }
 

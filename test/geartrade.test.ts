@@ -285,11 +285,12 @@ describe('Geartrade details', () => {
     expect(details.url).toBe(`https://geartrade.com/products/${JACKET}`);
   });
 
-  it('flags a missing description and photos', async () => {
+  it('does not report a product without a description or photos as failing to load', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(json({ ...skis(), description: '', images: ['http://insecure.test/a.jpg'] })));
     const details = await geartrade.getListingDetails(SKIS);
-    expect(details.unavailable).toEqual(['description', 'photos']);
+    expect(details.unavailable).toBeUndefined();
     expect(details.images).toEqual([]);
+    expect(details.description).toBe('182cm / Blue: $646.14, available');
   });
 
   it('rejects an unrecognised id without a request', async () => {
