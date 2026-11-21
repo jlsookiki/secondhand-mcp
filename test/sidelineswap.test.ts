@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SidelineSwapMarketplace, combinedTotal, exactTotal, soldOffset } from '../src/marketplaces/sidelineswap/index.js';
+import { SidelineSwapMarketplace, combinedTotal, exactTotal, soldOffset, wireObject } from '../src/marketplaces/sidelineswap/index.js';
 import { listingIdFrom } from '../src/marketplaces/sidelineswap/parse.js';
 import { searchQuery } from '../src/marketplaces/sidelineswap/query.js';
 import type { Item } from '../src/marketplaces/sidelineswap/wire.js';
@@ -64,6 +64,15 @@ describe('exactTotal', () => {
     expect(exactTotal({ total_count: 7, total_count_truncated: false })).toBe(7);
     expect(exactTotal({ total_count: 10_000, total_count_truncated: true })).toBeUndefined();
     expect(exactTotal(undefined)).toBeUndefined();
+  });
+});
+
+describe('wireObject', () => {
+  it('accepts only JSON objects', () => {
+    expect(wireObject({ data: [] })).toEqual({ data: [] });
+    expect(wireObject(null)).toBeUndefined();
+    expect(wireObject([])).toBeUndefined();
+    expect(wireObject('changed')).toBeUndefined();
   });
 });
 
@@ -198,6 +207,7 @@ describe('SidelineSwap search', () => {
   it.each([
     ['an HTTP error', () => json({}, 403), 'SidelineSwap returned 403'],
     ['a changed response', () => json({ data: 'changed' }), 'unexpected search response'],
+    ['an empty body', () => json(null), 'unexpected search response'],
     ['an HTML block page', () => new Response('<html>blocked</html>'), 'SidelineSwap search failed'],
   ])('reports %s', async (_label, reply, message) => {
     fetchMock.mockResolvedValue(reply());
@@ -267,7 +277,7 @@ describe('SidelineSwap details', () => {
     expect(details.url).toBe('https://sidelineswap.com/gear/12');
   });
 
-  it.each([{}, { data: { id: 99, name: 'Wrong item' } }])('treats a mismatched reply as not found', async (body) => {
+  it.each([{}, null, 'changed', [], { data: null }, { data: { id: 99, name: 'Wrong item' } }])('treats a mismatched reply as not found', async (body) => {
     fetchMock.mockResolvedValue(json(body));
     await expect(sidelineswap.getListingDetails('12549997')).rejects.toThrow('not found');
   });

@@ -64,8 +64,8 @@ export class SidelineSwapMarketplace extends BaseMarketplace {
 
     try {
       for (let page = firstPage; page < firstPage + MAX_PAGES && listings.length < limit; page++) {
-        const response = await this.get<SearchResponse>('/v2/facet_items', searchQuery(params, page, state), deadline);
-        if (!Array.isArray(response.data)) throw new Error('SidelineSwap returned an unexpected search response');
+        const response = wireObject<SearchResponse>(await this.get('/v2/facet_items', searchQuery(params, page, state), deadline));
+        if (!response || !Array.isArray(response.data)) throw new Error('SidelineSwap returned an unexpected search response');
 
         totalFound ??= exactTotal(response.meta?.paging);
         const rows = page === firstPage ? response.data.slice(offset % PAGE_SIZE) : response.data;
@@ -85,24 +85,29 @@ export class SidelineSwapMarketplace extends BaseMarketplace {
     const id = listingIdFrom(input);
     if (!id) throw new Error('SidelineSwap listing IDs are numbers; a sidelineswap.com/gear/ URL also works');
 
-    const { data } = await this.get<ItemResponse>(`/v1/items/${id}`);
+    const data = wireObject<ItemResponse>(await this.get(`/v1/items/${id}`))?.data;
     if (!data || itemId(data) !== id) throw new Error(`SidelineSwap listing ${id} not found`);
     return itemDetails(data, id);
   }
 
-  private async get<T>(path: string, query?: URLSearchParams, deadline?: AbortSignal): Promise<T> {
+  private async get(path: string, query?: URLSearchParams, deadline?: AbortSignal): Promise<unknown> {
     const url = new URL(path, API_URL);
     if (query) url.search = query.toString();
     const timeouts = [AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...(deadline ? [deadline] : [])];
     const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.any(timeouts) });
     if (!response.ok) throw new Error(`SidelineSwap returned ${response.status}`);
-    return (await response.json()) as T;
+    return response.json();
   }
 }
 
 /** SidelineSwap caps its count on broad queries; a capped count is left out rather than reported as the total. */
 export function exactTotal(paging: Paging | undefined): number | undefined {
   return paging?.total_count_truncated === false ? paging.total_count : undefined;
+}
+
+/** Every wire field is optional, so any JSON object fits the wire types; null, arrays and primitives do not. */
+export function wireObject<T extends object>(body: unknown): T | undefined {
+  return typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as T) : undefined;
 }
 
 /** Sold items follow every available one, so an offset past the available items continues into the sold ones. */
