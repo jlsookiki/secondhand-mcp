@@ -1,4 +1,4 @@
-import { Listing, ListingDetails, ListingPart } from '../../types.js';
+import { Listing, ListingDetails } from '../../types.js';
 import { Image, Item } from './wire.js';
 
 const SITE = 'https://sidelineswap.com';
@@ -33,20 +33,14 @@ export function summaryListing(item: Item): Listing | undefined {
 }
 
 export function itemDetails(item: Item, id: string): ListingDetails {
-  const images = photos(item);
   const sellerDescription = item.description?.trim();
   const facts = [askingPrice(item), ...attributes(item)];
-  const unavailable: ListingPart[] = [
-    ...(sellerDescription ? [] : ['description' as const]),
-    ...(images.length ? [] : ['photos' as const]),
-  ];
   return {
     id,
     url: listingUrl(item, id),
-    images,
+    images: photos(item),
     seller: item.seller?.username,
     description: [...facts, ...(sellerDescription ? ['', sellerDescription] : [])].join('\n'),
-    ...(unavailable.length && { unavailable }),
   };
 }
 

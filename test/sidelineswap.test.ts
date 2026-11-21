@@ -235,10 +235,11 @@ describe('SidelineSwap details', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('flags a missing description and photos', async () => {
+  it('does not report a listing without a description or photos as failing to load', async () => {
     fetchMock.mockResolvedValue(json({ data: { id: 12, name: 'Bat', state: 'available', details: [{ name: 'Length', values: [{ name: '32 inches' }] }, { name: 'Empty', values: [{}] }] } }));
     const details = await sidelineswap.getListingDetails('12');
-    expect(details.unavailable).toEqual(['description', 'photos']);
+    expect(details.unavailable).toBeUndefined();
+    expect(details.images).toEqual([]);
     expect(details.description).toBe('Price: not listed\nStatus: available\nLength: 32 inches');
   });
 
