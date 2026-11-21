@@ -1,5 +1,5 @@
 import { convert } from 'html-to-text';
-import { Listing, ListingDetails, ListingPart } from '../../types.js';
+import { Listing, ListingDetails } from '../../types.js';
 import { Field, Price, Product, ProductJsonLd, ProductPage } from './wire.js';
 
 export const SITE = 'https://playitagainsports.com';
@@ -89,10 +89,6 @@ export function productDetails(html: string, path: string): ListingDetails | und
   const images = galleryPhotos(html, product);
   const facts = [askingPrice(page.productPrice, currencyOf(fields)), ...stockStatus(page), ...fieldLines(fields)];
   const shipping = fieldValue(fields, 'Standard Shipping');
-  const unavailable: ListingPart[] = [
-    ...(sellerDescription ? [] : ['description' as const]),
-    ...(images.length ? [] : ['photos' as const]),
-  ];
   return {
     id: path,
     url: `${SITE}${path}`,
@@ -102,7 +98,6 @@ export function productDetails(html: string, path: string): ListingDetails | und
     description: [...facts, ...(sellerDescription ? ['', sellerDescription] : [])].join('\n'),
     deliveryTypes: DELIVERY_FIELDS.filter((name) => fieldValue(fields, name) === 'Yes'),
     ...(shipping && { isShippingOffered: shipping === 'Yes' }),
-    ...(unavailable.length && { unavailable }),
   };
 }
 

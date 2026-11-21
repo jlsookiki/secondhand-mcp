@@ -310,14 +310,30 @@ describe('Play It Again Sports details', () => {
     expect(details.description).toContain('Price: C$14.99');
   });
 
-  it('shows the price range of a product with options and flags the missing description', async () => {
+  it('shows the price range of a product with options', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(html(fixture('variant-product'))));
     const details = await playitagain.getListingDetails(
       'https://playitagainsports.com/locations/whitby-on/product/CCM-AXIS-F5-GOALIE-MASK/GHH-CCM-AXIS-F5-GOALIE-MASK-SR-WHT'
     );
     expect(details.description).toContain('Price: C$239.99–C$249.99');
     expect(details.isShippingOffered).toBe(false);
-    expect(details.unavailable).toEqual(['description']);
+  });
+
+  it('treats a product without a seller description as fully loaded', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('variant-product'))));
+    const details = await playitagain.getListingDetails(
+      '/locations/whitby-on/product/CCM-AXIS-F5-GOALIE-MASK/GHH-CCM-AXIS-F5-GOALIE-MASK-SR-WHT'
+    );
+    expect(details.unavailable).toBeUndefined();
+    expect(details.description).not.toContain('\n\n');
+  });
+
+  it('treats a product without photos as fully loaded', async () => {
+    const page = fixture('product').replaceAll('data-image-gallery-new-image-url', 'data-removed').replace(/"image"\s*:\s*(\[[^\]]*\]|"[^"]*")/g, '"image": []');
+    fetchMock.mockImplementation(() => Promise.resolve(html(page)));
+    const details = await playitagain.getListingDetails(CATCHER_PATH);
+    expect(details.images).toEqual([]);
+    expect(details.unavailable).toBeUndefined();
   });
 
   it('rejects an unrecognised id without a request', async () => {
