@@ -13,6 +13,8 @@ const PHOTO_SIZE = /\/stencil\/[^/]+\//;
 const PHOTO_SIZE_PLACEHOLDER = '{:size}';
 const FULL_SIZE = '1280x1280';
 const DELIVERY_FIELDS = ['Pick Up in Store', 'Standard Shipping', 'Local Delivery'];
+const DESCRIPTIVE_FIELDS = ['Condition', 'Product Brand', 'Model', 'Product Line', 'Size', 'Color', 'Style', 'Key Feature', 'Age / Gender', 'Gender'];
+const NO_VALUE = 'None';
 
 interface Currency {
   code: string;
@@ -88,7 +90,7 @@ export function productDetails(html: string, path: string): ListingDetails | und
   const sellerDescription = plainText(product?.description);
   const images = galleryPhotos(html, product);
   const name = product?.name?.trim();
-  const facts = [...(name ? [name] : []), askingPrice(page.productPrice, currencyOf(fields)), ...stockStatus(page), ...fieldLines(fields)];
+  const facts = [...(name ? [name] : []), askingPrice(page.productPrice, currencyOf(fields)), ...stockStatus(page), ...descriptiveFieldLines(fields)];
   const shipping = fieldValue(fields, 'Standard Shipping');
   return {
     id: path,
@@ -147,10 +149,15 @@ function stockStatus(page: ProductPage): string[] {
   return [`Status: ${page.isInStock ? 'in stock' : 'out of stock'}`];
 }
 
-function fieldLines(fields: Field[]): string[] {
-  return fields
-    .filter((field) => field?.name && field.value?.trim())
-    .map((field) => `${field.name}: ${field.value!.trim()}`);
+/** The storefront also carries bookkeeping fields (Country, Shipping, Discounted Price, delivery flags) that mean nothing to a shopper. */
+export function descriptiveFieldLines(fields: Field[]): string[] {
+  return DESCRIPTIVE_FIELDS.flatMap((name) => {
+    const values = fields
+      .filter((field) => field?.name === name)
+      .map((field) => field.value?.trim())
+      .filter((value): value is string => !!value && value !== NO_VALUE);
+    return values.length ? [`${name}: ${[...new Set(values)].join(' / ')}`] : [];
+  });
 }
 
 function plainText(html: string | null | undefined): string {

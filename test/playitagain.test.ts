@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayItAgainMarketplace, clampCount, totalFound } from '../src/marketplaces/playitagain/index.js';
-import { currencyOf, pageData, productJsonLd, productPath, resultCount, summaryListing } from '../src/marketplaces/playitagain/parse.js';
+import { currencyOf, descriptiveFieldLines, pageData, productJsonLd, productPath, resultCount, summaryListing } from '../src/marketplaces/playitagain/parse.js';
 import { matchesFilters, searchUrl } from '../src/marketplaces/playitagain/query.js';
 import { registerMarketplace } from '../src/marketplaces/index.js';
 import { researchFetch } from '../src/tools/deep-research.js';
@@ -101,6 +101,32 @@ describe('currencyOf', () => {
     expect(currencyOf([{ name: 'Country', value: 'CA' }])?.code).toBe('CAD');
     expect(currencyOf([{ name: 'Country', value: 'MX' }])).toBeUndefined();
     expect(currencyOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('descriptiveFieldLines', () => {
+  it('keeps descriptive fields in a fixed order and drops store bookkeeping', () => {
+    const lines = descriptiveFieldLines([
+      { name: 'Color', value: 'Black' },
+      { name: 'Shipping', value: '48' },
+      { name: 'Country', value: 'US' },
+      { name: 'Discounted Price', value: 'No' },
+      { name: 'Standard Shipping', value: 'Yes' },
+      { name: 'Condition', value: 'Used' },
+      { name: 'Product Brand', value: 'Bauer' },
+    ]);
+    expect(lines).toEqual(['Condition: Used', 'Product Brand: Bauer', 'Color: Black']);
+  });
+
+  it('merges repeated fields and drops empty or None values', () => {
+    const lines = descriptiveFieldLines([
+      { name: 'Color', value: 'White' },
+      { name: 'Color', value: 'White And Black' },
+      { name: 'Color', value: 'White' },
+      { name: 'Product Line', value: 'None' },
+      { name: 'Size', value: ' ' },
+    ]);
+    expect(lines).toEqual(['Color: White / White And Black']);
   });
 });
 
@@ -338,6 +364,16 @@ describe('Play It Again Sports details', () => {
     const details = await playitagain.getListingDetails(CATCHER_PATH);
     expect(details.images).toEqual([]);
     expect(details.unavailable).toBeUndefined();
+  });
+
+  it('lists only descriptive product fields', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html(fixture('variant-product'))));
+    const details = await playitagain.getListingDetails(MASK_PATH);
+    const lines = details.description!.split('\n');
+    expect(lines).toEqual(expect.arrayContaining(['Condition: New', 'Product Brand: CCM', 'Size: One Size', 'Color: White / White And Black']));
+    for (const internal of ['Shipping:', 'Country:', 'Discounted Price:', 'Pick Up in Store:', 'Standard Shipping:', 'Local Delivery:', 'Product Line:']) {
+      expect(lines.some((line) => line.startsWith(internal))).toBe(false);
+    }
   });
 
   it('names the product on the first line', async () => {
