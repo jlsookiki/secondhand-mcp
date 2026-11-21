@@ -8,7 +8,7 @@
 import { BaseMarketplace } from '../base.js';
 import { Listing, ListingDetails, SearchParams, SearchResult } from '../../types.js';
 import { itemDetails, itemId, listingIdFrom, summaryListing } from './parse.js';
-import { PAGE_SIZE, searchQuery } from './query.js';
+import { ListingState, PAGE_SIZE, searchQuery } from './query.js';
 import { Item, ItemResponse, Paging, SearchResponse } from './wire.js';
 
 const API_URL = 'https://api.sidelineswap.com';
@@ -16,6 +16,12 @@ const MAX_PAGES = 10;
 const MAX_RESULTS = PAGE_SIZE * MAX_PAGES;
 const REQUEST_TIMEOUT_MS = 20_000;
 const SEARCH_DEADLINE_MS = 45_000;
+
+interface StateResults {
+  listings: Listing[];
+  totalFound?: number;
+  failure?: unknown;
+}
 
 export class SidelineSwapMarketplace extends BaseMarketplace {
   readonly name = 'sidelineswap';
@@ -25,15 +31,40 @@ export class SidelineSwapMarketplace extends BaseMarketplace {
   async search(params: SearchParams): Promise<SearchResult> {
     const limit = Math.min(params.limit ?? 20, MAX_RESULTS);
     const offset = params.offset ?? 0;
-    const firstPage = Math.floor(offset / PAGE_SIZE) + 1;
     const deadline = AbortSignal.timeout(SEARCH_DEADLINE_MS);
-    const listings: Listing[] = [];
     const seen = new Set<string>();
+
+    const available = await this.searchState(params, 'available', offset, limit, deadline, seen);
+    const wantsSold = params.showSold && available.failure === undefined && available.listings.length < limit;
+    const sold = wantsSold && available.totalFound !== undefined
+      ? await this.searchState(params, 'sold', soldOffset(offset, available.totalFound), limit - available.listings.length, deadline, seen)
+      : undefined;
+
+    const listings = [...available.listings, ...(sold?.listings ?? [])];
+    const failure = available.failure ?? sold?.failure;
+    const totalFound = params.showSold ? combinedTotal(available.totalFound, sold?.totalFound) : available.totalFound;
+
+    if (failure !== undefined && listings.length === 0) return this.createError(`SidelineSwap search failed: ${failure}`);
+    if (failure !== undefined) return { marketplace: this.name, success: true, listings, totalFound, note: `Later pages failed: ${failure}` };
+    return { marketplace: this.name, success: true, listings, totalFound };
+  }
+
+  /** SidelineSwap ranks sold items ahead of available ones when both are asked for together, so each state is its own search. */
+  private async searchState(
+    params: SearchParams,
+    state: ListingState,
+    offset: number,
+    limit: number,
+    deadline: AbortSignal,
+    seen: Set<string>
+  ): Promise<StateResults> {
+    const firstPage = Math.floor(offset / PAGE_SIZE) + 1;
+    const listings: Listing[] = [];
     let totalFound: number | undefined;
 
     try {
       for (let page = firstPage; page < firstPage + MAX_PAGES && listings.length < limit; page++) {
-        const response = await this.get<SearchResponse>('/v2/facet_items', searchQuery(params, page), deadline);
+        const response = await this.get<SearchResponse>('/v2/facet_items', searchQuery(params, page, state), deadline);
         if (!Array.isArray(response.data)) throw new Error('SidelineSwap returned an unexpected search response');
 
         totalFound ??= exactTotal(response.meta?.paging);
@@ -43,12 +74,11 @@ export class SidelineSwapMarketplace extends BaseMarketplace {
 
         if (!response.meta?.paging?.has_next_page || fresh.length === 0) break;
       }
-    } catch (error) {
-      if (listings.length === 0) return this.createError(`SidelineSwap search failed: ${error}`);
-      return { marketplace: this.name, success: true, listings, totalFound, note: `Later pages failed: ${error}` };
+    } catch (failure) {
+      return { listings, totalFound, failure };
     }
 
-    return { marketplace: this.name, success: true, listings, totalFound };
+    return { listings, totalFound };
   }
 
   async getListingDetails(input: string): Promise<ListingDetails> {
@@ -73,6 +103,15 @@ export class SidelineSwapMarketplace extends BaseMarketplace {
 /** SidelineSwap caps its count on broad queries; a capped count is left out rather than reported as the total. */
 export function exactTotal(paging: Paging | undefined): number | undefined {
   return paging?.total_count_truncated === false ? paging.total_count : undefined;
+}
+
+/** Sold items follow every available one, so an offset past the available items continues into the sold ones. */
+export function soldOffset(offset: number, availableTotal: number): number {
+  return Math.max(0, offset - availableTotal);
+}
+
+export function combinedTotal(available: number | undefined, sold: number | undefined): number | undefined {
+  return available !== undefined && sold !== undefined ? available + sold : undefined;
 }
 
 function unseenListings(rows: Item[], seen: Set<string>): Listing[] {

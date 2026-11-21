@@ -14,18 +14,19 @@ const CONDITION_IDS: Partial<Record<NonNullable<SearchParams['condition']>, stri
   used: '17',
 };
 
+export type ListingState = 'available' | 'sold';
+
 const CATEGORY_ID = /^[1-9]\d*$/;
 
 /** Filters SidelineSwap has no equivalent for are left out, the same way the other marketplaces ignore them. */
-export function searchQuery(params: SearchParams, page: number): URLSearchParams {
+export function searchQuery(params: SearchParams, page: number, state: ListingState): URLSearchParams {
   const query = new URLSearchParams({
     q: params.query,
     page_size: String(PAGE_SIZE),
     page: String(page),
     sort: (params.sort && SORT_KEYS[params.sort]) ?? SORT_KEYS.relevance!,
   });
-  query.append('state[]', 'available');
-  if (params.showSold) query.append('state[]', 'sold');
+  query.append('state[]', state);
   if (params.minPrice !== undefined) query.set('min_price', String(params.minPrice));
   if (params.maxPrice !== undefined) query.set('max_price', String(params.maxPrice));
   const conditionId = params.condition && CONDITION_IDS[params.condition];

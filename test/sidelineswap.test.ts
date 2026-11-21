@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SidelineSwapMarketplace, exactTotal } from '../src/marketplaces/sidelineswap/index.js';
+import { SidelineSwapMarketplace, combinedTotal, exactTotal, soldOffset } from '../src/marketplaces/sidelineswap/index.js';
 import { listingIdFrom } from '../src/marketplaces/sidelineswap/parse.js';
 import { searchQuery } from '../src/marketplaces/sidelineswap/query.js';
 import type { Item } from '../src/marketplaces/sidelineswap/wire.js';
@@ -34,7 +34,8 @@ describe('searchQuery', () => {
   it('maps supported filters onto storefront parameters', () => {
     const query = searchQuery(
       { query: 'bauer 950', minPrice: 100, maxPrice: 500, condition: 'used', category: '110030', sort: 'price_low_to_high' },
-      2
+      2,
+      'available'
     );
     expect(Object.fromEntries(query)).toMatchObject({
       q: 'bauer 950', page: '2', page_size: '50', sort: 'price_asc', min_price: '100', max_price: '500',
@@ -43,14 +44,15 @@ describe('searchQuery', () => {
     expect(query.getAll('state[]')).toEqual(['available']);
   });
 
-  it('adds sold listings when asked', () => {
-    expect(searchQuery({ query: 'bat', showSold: true }, 1).getAll('state[]')).toEqual(['available', 'sold']);
+  it('asks for one listing state at a time', () => {
+    expect(searchQuery({ query: 'bat', showSold: true }, 1, 'sold').getAll('state[]')).toEqual(['sold']);
   });
 
   it('ignores filters SidelineSwap cannot apply', () => {
     const query = searchQuery(
       { query: 'bat', condition: 'like_new', sort: 'most_popular', category: 'Bats', brand: 'Easton', sizes: ['32'], colors: ['red'] },
-      1
+      1,
+      'available'
     );
     expect([...query.keys()].sort()).toEqual(['page', 'page_size', 'q', 'sort', 'state[]']);
     expect(query.get('sort')).toBe('relevancy_desc');
@@ -62,6 +64,21 @@ describe('exactTotal', () => {
     expect(exactTotal({ total_count: 7, total_count_truncated: false })).toBe(7);
     expect(exactTotal({ total_count: 10_000, total_count_truncated: true })).toBeUndefined();
     expect(exactTotal(undefined)).toBeUndefined();
+  });
+});
+
+describe('soldOffset', () => {
+  it('starts sold items where the offset passes the available ones', () => {
+    expect(soldOffset(10, 53)).toBe(0);
+    expect(soldOffset(60, 53)).toBe(7);
+  });
+});
+
+describe('combinedTotal', () => {
+  it('adds the two totals only when both are exact', () => {
+    expect(combinedTotal(53, 400)).toBe(453);
+    expect(combinedTotal(53, undefined)).toBeUndefined();
+    expect(combinedTotal(undefined, 400)).toBeUndefined();
   });
 });
 
@@ -100,6 +117,33 @@ describe('SidelineSwap search', () => {
     fetchMock.mockResolvedValue(json(page([{ ...mask(), state: 'sold' }])));
     const [listing] = (await sidelineswap.search({ query: 'mask', showSold: true })).listings;
     expect(listing.title).toMatch(/\[Sold\]$/);
+  });
+
+  it('lists available items before sold ones when sold are included', async () => {
+    const available = [{ ...mask(), id: 1 }, { ...mask(), id: 2 }];
+    const sold = [{ ...mask(), id: 3, state: 'sold' }, { ...mask(), id: 4, state: 'sold' }, { ...mask(), id: 5, state: 'sold' }];
+    fetchMock.mockImplementation((url: URL) => {
+      const states = url.searchParams.getAll('state[]');
+      return Promise.resolve(json(page(states.includes('available') && !states.includes('sold') ? available : sold)));
+    });
+
+    const result = await sidelineswap.search({ query: 'bauer 950', showSold: true, limit: 4 });
+
+    expect(result.listings.map((l) => l.id)).toEqual(['1', '2', '3', '4']);
+    expect(result.totalFound).toBe(5);
+  });
+
+  it('continues into sold items past the end of the available ones', async () => {
+    const available = [{ ...mask(), id: 1 }, { ...mask(), id: 2 }];
+    const sold = [{ ...mask(), id: 3, state: 'sold' }, { ...mask(), id: 4, state: 'sold' }, { ...mask(), id: 5, state: 'sold' }];
+    fetchMock.mockImplementation((url: URL) => {
+      const states = url.searchParams.getAll('state[]');
+      return Promise.resolve(json(page(states.includes('available') && !states.includes('sold') ? available : sold)));
+    });
+
+    const result = await sidelineswap.search({ query: 'bauer 950', showSold: true, offset: 3, limit: 4 });
+
+    expect(result.listings.map((l) => l.id)).toEqual(['4', '5']);
   });
 
   it('leaves out price fields when an item has no price', async () => {
