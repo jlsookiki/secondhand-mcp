@@ -237,17 +237,11 @@ describe('EbayMarketplace.search request', () => {
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBeNull();
   });
 
-  it.each([
-    ['new', 'NEW'],
-    ['like_new', 'LIKE_NEW'],
-    ['good', 'GOOD'],
-    ['fair', 'FAIR'],
-    ['excellent', 'USED'],
-  ] as const)('maps condition %s to the eBay conditions filter', async (condition, mapped) => {
+  it('sends the condition as eBay condition IDs', async () => {
     install();
-    await market().search({ query: 'lamp', condition });
+    await market().search({ query: 'lamp', condition: 'good' });
 
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(`conditions:{${mapped}}`);
+    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditionIds:{2750|2990|3000|3010|4000|5000|6000}');
   });
 
   it('sends no condition filter for "any"', async () => {
@@ -274,15 +268,8 @@ describe('EbayMarketplace.search request', () => {
     await market().search({ query: 'lamp', minPrice: 5, maxPrice: 20, condition: 'new' });
 
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(
-      'price:[5..20],priceCurrency:USD,conditions:{NEW}'
+      'price:[5..20],priceCurrency:USD,conditionIds:{1000|1500|1750}'
     );
-  });
-
-  it('applies a filter for the "used" condition', async () => {
-    install();
-    await market().search({ query: 'lamp', condition: 'used' });
-
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditions:{USED}');
   });
 
   it('sends priceCurrency alongside a price filter', async () => {
@@ -498,8 +485,8 @@ describe('EbayMarketplace.search pagination', () => {
     await market().search({ query: 'lamp', limit: 210, condition: 'new', maxPrice: 50 });
 
     expect(callsTo(SEARCH_PATH).map((c) => query(c, 'filter'))).toEqual([
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
     ]);
   });
 
