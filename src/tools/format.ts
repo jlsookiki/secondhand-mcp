@@ -1,4 +1,4 @@
-import { Listing, ListingDetails, ListingPart, SearchParams, SearchResult } from '../types.js';
+import { Listing, ListingAvailability, ListingDetails, ListingPart, SearchParams, SearchResult } from '../types.js';
 
 const ALL_MARKETPLACES_PER_SOURCE = 10;
 
@@ -84,12 +84,42 @@ const UNAVAILABLE_NOTES: Record<ListingPart, string> = {
   description: "The description, location and seller couldn't be loaded right now; asking again may bring them back.",
 };
 
+const AVAILABILITY_TEXT: Record<ListingAvailability, string> = {
+  available: '✅ Still for sale',
+  pending: '⏳ Sale pending',
+  sold: '🚫 Marked sold',
+  unavailable: '🚫 No longer listed',
+};
+
+const ISO_DATE_LENGTH = 'YYYY-MM-DD'.length;
+
+/** The listing's own facts (price, condition, age, whether it is still for sale), one line each. */
+export function factLines(details: ListingDetails): string[] {
+  const lines: string[] = [];
+  if (details.price) lines.push(`💰 ${priceText(details.price, details.originalPrice)}`);
+  if (details.condition) lines.push(`✨ Condition: ${details.condition}`);
+  if (details.listedAt) lines.push(`📅 Listed ${details.listedAt.slice(0, ISO_DATE_LENGTH)}`);
+  if (details.availability) lines.push(AVAILABILITY_TEXT[details.availability]);
+  return lines;
+}
+
+function priceText(price: string, originalPrice: string | undefined): string {
+  return originalPrice ? `${price} (was ${originalPrice})` : price;
+}
+
 export function formatListingDetails(details: ListingDetails): string {
   const lines = [
     `📋 Listing Details`,
+    ...(details.title ? [`**${details.title}**`] : []),
     `🔗 ${details.url}`,
     '',
   ];
+
+  const facts = factLines(details);
+  if (facts.length > 0) {
+    lines.push(...facts);
+    lines.push('');
+  }
 
   if (details.description) {
     lines.push(`**Description:** ${details.description}`);

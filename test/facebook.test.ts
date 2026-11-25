@@ -310,6 +310,14 @@ describe('search requests and parsing', () => {
     expect(result.listings.map((l) => l.id)).toEqual(['sold', 'titled-sold', 'live']);
   });
 
+  it('skips a listing whose title is not text', async () => {
+    stubFetch(() =>
+      json(searchBody([item({ id: 'odd', marketplace_listing_title: { text: 'Trek 520' } }), item({ id: 'live' })]))
+    );
+
+    expect((await search({ showSold: true })).listings.map((l) => l.id)).toEqual(['live']);
+  });
+
   it('keeps a title that only mentions sold mid-sentence', async () => {
     stubFetch(() =>
       json(searchBody([item({ marketplace_listing_title: 'Trek 520 - not sold yet' })]))

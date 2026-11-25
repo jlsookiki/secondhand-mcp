@@ -186,6 +186,10 @@ Get full details for a specific listing using an ID from search results.
 
 | Field | Facebook | eBay | Depop | Poshmark |
 |-------|----------|------|-------|----------|
+| Title and price | Yes, with the price before a drop | — | — | — |
+| Condition | Yes | — | — | — |
+| Date listed | Yes | — | — | — |
+| Sold or pending | Yes | — | — | — |
 | Description | Yes | Yes | Yes | Yes |
 | All photos | Yes | Yes | Yes | Yes |
 | Location | City | City, State, Country | — | — |

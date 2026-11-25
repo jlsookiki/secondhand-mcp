@@ -51,6 +51,8 @@ export interface SearchResult {
   note?: string;
 }
 
+export type ListingAvailability = 'available' | 'pending' | 'sold' | 'unavailable';
+
 /** A part of a listing that a marketplace failed to return this time. */
 export type ListingPart = 'photos' | 'description';
 
@@ -65,6 +67,15 @@ export interface ListingDetails {
   deliveryTypes?: string[];
   isShippingOffered?: boolean;
   url: string;
+  title?: string;
+  price?: string;
+  priceNumeric?: number;
+  /** What the listing asked before its price was reduced. */
+  originalPrice?: string;
+  condition?: string;
+  /** When the listing went up, as an ISO timestamp. */
+  listedAt?: string;
+  availability?: ListingAvailability;
   unavailable?: ListingPart[];
 }
 
