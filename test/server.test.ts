@@ -517,11 +517,11 @@ describe('get_listing_details', () => {
     }
   );
 
-  it('refuses an eBay link sent with another marketplace', async () => {
+  it('opens an eBay link on eBay even when marketplace says facebook', async () => {
+    h.impl.ebay = { details: () => details() };
     const res = await call('get_listing_details', { listingId: 'https://www.ebay.com/itm/555', marketplace: 'facebook' });
-    expect(res.isError).toBe(true);
-    expect(textOf(res)).toContain('This id belongs to ebay, but marketplace says facebook.');
-    expect(h.detailCalls).toEqual([]);
+    expect(res.isError).toBeFalsy();
+    expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: 'https://www.ebay.com/itm/555' }]);
   });
 
   it('rejects an image mode it does not know', async () => {

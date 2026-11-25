@@ -15,17 +15,18 @@ describe('resolveListingRef', () => {
     [['https://ebay.us/m/m2KbLr', undefined], { listingId: 'https://ebay.us/m/m2KbLr', marketplace: 'ebay' }],
     [['https://ebay.us/m/m2KbLr', 'ebay'], { listingId: 'https://ebay.us/m/m2KbLr', marketplace: 'ebay' }],
     [['etsy:9', undefined], { listingId: 'etsy:9', marketplace: 'facebook' }],
+    [['etsy:9', 'depop'], { listingId: 'etsy:9', marketplace: 'depop' }],
   ] as const)('reads %j as %j', ([id, marketplace], ref) => {
     expect(resolveListingRef(id, marketplace, NAMES)).toEqual(ref);
   });
 
   it.each([
-    ['ebay:555', 'facebook', 'This id belongs to ebay, but marketplace says facebook.'],
-    ['https://www.ebay.com/itm/555', 'facebook', 'This id belongs to ebay, but marketplace says facebook.'],
-    ['depop:abc', 'ebay', 'This id belongs to depop, but marketplace says ebay.'],
-  ])('refuses %j under marketplace %s rather than answering about another listing', (id, marketplace, message) => {
-    const ref = resolveListingRef(id, marketplace, NAMES);
-    expect('error' in ref && ref.error).toContain(message);
+    [['ebay:555', 'facebook'], { listingId: '555', marketplace: 'ebay' }],
+    [['https://www.ebay.com/itm/555', 'facebook'], { listingId: 'https://www.ebay.com/itm/555', marketplace: 'ebay' }],
+    [['https://ebay.us/m/m2KbLr', 'facebook'], { listingId: 'https://ebay.us/m/m2KbLr', marketplace: 'ebay' }],
+    [['depop:abc', 'ebay'], { listingId: 'abc', marketplace: 'depop' }],
+  ] as const)('lets %j open where the id itself says: %j', ([id, marketplace], ref) => {
+    expect(resolveListingRef(id, marketplace, NAMES)).toEqual(ref);
   });
 
   it('refuses a prefix with no id after it', () => {
