@@ -20,6 +20,8 @@ export interface Listing {
   total?: string;
   marketplace: string;
   scrapedAt: string;
+  /** Sold in several options that may be priced differently; `price` is one of them. */
+  hasOptions?: boolean;
 }
 
 export interface ShippingChoice {
@@ -60,10 +62,24 @@ export interface SearchResult {
   note?: string;
 }
 
+/** The options a shopper wants to see, by aspect name; any listed value matches: { Size: ['M', 'L'] }. */
+export type OptionFilter = Record<string, string[]>;
+
+/** One option of a listing sold in several variations. */
+export interface ListingOption {
+  id: string;
+  /** What sets this option apart, e.g. { Size: 'M', Color: 'Black' }. */
+  aspects: Record<string, string>;
+  price?: string;
+  priceNumeric?: number;
+  available: boolean;
+  url: string;
+}
+
 export type ListingAvailability = 'available' | 'pending' | 'sold' | 'unavailable';
 
 /** A part of a listing that a marketplace failed to return this time. */
-export type ListingPart = 'photos' | 'description';
+export type ListingPart = 'photos' | 'description' | 'options';
 
 export interface ListingDetails {
   id: string;
@@ -88,6 +104,18 @@ export interface ListingDetails {
   listedAt?: string;
   availability?: ListingAvailability;
   unavailable?: ListingPart[];
+  /** What a multi-variation listing's options differ by, e.g. ['Size', 'Color']. */
+  optionAxes?: string[];
+  /** Every value each axis takes across all options. */
+  optionValues?: Record<string, string[]>;
+  /** Cheapest and dearest option, present only when their prices differ. */
+  priceRange?: { low: string; high: string; lowNumeric?: number; highNumeric?: number };
+  /** A few options, available first; with `optionFilter`, the options that match it. */
+  options?: ListingOption[];
+  optionCount?: number;
+  /** The choice these options were narrowed to, and how many matched it; alone, a choice made for a listing sold as one item. */
+  optionFilter?: OptionFilter;
+  matchingOptions?: number;
 }
 
 export interface MarketplaceConfig {

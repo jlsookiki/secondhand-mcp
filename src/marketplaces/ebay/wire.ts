@@ -32,6 +32,8 @@ export interface ItemSummary {
   itemLocation?: BrowseLocation;
   itemWebUrl?: string;
   seller?: { username?: string };
+  /** Present on a row that is one option of a multi-variation listing. */
+  itemGroupHref?: string;
   shippingOptions?: BrowseShippingOption[];
 }
 
@@ -40,8 +42,18 @@ export interface SearchResponse {
   itemSummaries?: ItemSummary[];
 }
 
+export interface BrowseAspect {
+  name: string;
+  value: string;
+}
+
+export interface BrowseAvailability {
+  estimatedAvailabilityStatus?: string;
+}
+
 export interface Item {
   itemId: string;
+  price?: BrowsePrice;
   description?: string;
   shortDescription?: string;
   image?: BrowseImage;
@@ -50,6 +62,20 @@ export interface Item {
   seller?: { username?: string };
   shippingOptions?: BrowseShippingOption[];
   itemWebUrl?: string;
+  localizedAspects?: BrowseAspect[];
+  estimatedAvailabilities?: BrowseAvailability[];
+  /** Set when this item is one option of a multi-variation listing. */
+  primaryItemGroup?: { itemGroupId?: string };
+}
+
+export interface ItemGroupResponse {
+  items?: Item[];
+  /** A description every option shares, moved out of the items themselves. */
+  commonDescriptions?: Array<{ description?: string }>;
+}
+
+export interface BrowseErrorResponse {
+  errors?: Array<{ errorId?: number | string }>;
 }
 
 export interface TokenResponse {

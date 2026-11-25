@@ -1,21 +1,47 @@
 import { parsePrice } from '../base.js';
-import { Listing, ListingDetails } from '../../types.js';
+import { Listing, ListingDetails, ListingOption, OptionFilter } from '../../types.js';
 import { currencySymbol } from './currency.js';
 import { descriptionText } from './description.js';
 import { toFullResImageUrl } from './images.js';
+import { itemPageUrl } from './items.js';
+import {
+  aspectsNamed,
+  availableFirst,
+  describedOption,
+  isAvailable,
+  optionValues,
+  priceSpread,
+  selectOptions,
+  varyingAspectNames,
+} from './options.js';
 import { ShippingQuote, cheapestShipping, deliveredTotal, shippedOptions } from './shipping.js';
-import { BrowseLocation, BrowsePrice, Item, ItemSummary } from './wire.js';
+import { BrowseLocation, BrowsePrice, Item, ItemGroupResponse, ItemSummary } from './wire.js';
+
+// 50 groups sampled in late September 2026 held a median of 25 options and up
+// to 250. A few options plus every axis value answers most questions; naming
+// the options wanted brings back up to the larger cap.
+const SHOWN_OPTIONS = 10;
+const MAX_OPTIONS = 30;
 
 const SHIPPING_FREE = 'Free';
 const SHIPPING_CALCULATED = 'Calculated at checkout';
 const CENT_DECIMALS = 2;
 
+interface PriceText {
+  text: string;
+  numeric?: number;
+}
+
+/** Browse gives amount and currency as separate fields, so only the amount needs parsing. */
+export function browsePrice(price: BrowsePrice | undefined): PriceText | undefined {
+  if (!price) return undefined;
+  const symbol = price.currency ? currencySymbol(price.currency) : '';
+  return { text: `${symbol}${price.value}`, numeric: parsePrice(String(price.value))?.numeric };
+}
+
 export function summaryListing(item: ItemSummary): Listing {
-  // Browse gives amount and currency as separate fields, so only the
-  // amount needs parsing; the currency is already known.
   const currency = item.price?.currency ? currencySymbol(item.price.currency) : undefined;
-  const price = item.price ? `${currency}${item.price.value}` : 'Price not listed';
-  const parsed = item.price ? parsePrice(String(item.price.value)) : null;
+  const price = browsePrice(item.price);
 
   // Only the primary image for search results; the full set comes with details.
   const image = item.image?.imageUrl ? toFullResImageUrl(item.image.imageUrl) : undefined;
@@ -24,22 +50,23 @@ export function summaryListing(item: ItemSummary): Listing {
   return {
     id: item.itemId,
     title: item.title || 'Untitled Listing',
-    price,
-    priceNumeric: parsed?.numeric,
+    price: price?.text ?? 'Price not listed',
+    priceNumeric: price?.numeric,
     currency: currency ?? '$',
     condition: item.condition,
     location: placeText(item.itemLocation, ['city', 'stateOrProvince']),
-    url: item.itemWebUrl || `https://www.ebay.com/itm/${item.itemId}`,
+    url: item.itemWebUrl || itemPageUrl(item.itemId),
     images: image ? [image] : undefined,
     seller: item.seller?.username,
     shipping: shipping && quoteText(shipping),
-    total: totalText(parsed?.numeric, item.price?.currency, shipping),
+    total: totalText(price?.numeric, item.price?.currency, shipping),
     marketplace: 'ebay',
     scrapedAt: new Date().toISOString(),
+    ...(item.itemGroupHref && { hasOptions: true }),
   };
 }
 
-export function itemDetails(item: Item, requestedId: string): ListingDetails {
+export function itemDetails(item: Item): ListingDetails {
   const additional = Array.isArray(item.additionalImages) ? item.additionalImages : [];
   const images = [item.image, ...additional].flatMap((image) =>
     image?.imageUrl ? [toFullResImageUrl(image.imageUrl)] : []
@@ -57,7 +84,58 @@ export function itemDetails(item: Item, requestedId: string): ListingDetails {
     isShippingOffered: shipped.length > 0,
     shipping: cheapest && quoteText(cheapest),
     shippingOptions: shipped.length > 0 ? shipped.map(({ service, quote }) => ({ service, cost: quoteText(quote) })) : undefined,
-    url: item.itemWebUrl ?? `https://www.ebay.com/itm/${requestedId}`,
+    url: item.itemWebUrl ?? itemPageUrl(item.itemId),
+  };
+}
+
+export interface GroupRequest {
+  groupId: string;
+  filter?: OptionFilter;
+  /** The option the shopper asked about, which the answer describes and links unless their filter picks another. */
+  chosen?: Item;
+}
+
+/** A multi-variation listing: one option described in full, plus what every option differs by and costs. */
+export function groupDetails(group: ItemGroupResponse, { groupId, filter, chosen }: GroupRequest): ListingDetails {
+  const items = Array.isArray(group.items) ? group.items : [];
+  const ordered = availableFirst(items);
+  const axes = varyingAspectNames(items);
+  const selection = selectOptions(ordered, filter, { shown: SHOWN_OPTIONS, max: MAX_OPTIONS });
+  const described = describedOption(chosen, selection, ordered);
+  const shown = described.option;
+  const sharedDescription = group.commonDescriptions?.[0]?.description;
+  const linkedId = described.linksOption ? shown.itemId : `v1|${groupId}|0`;
+
+  return {
+    ...itemDetails({ ...shown, description: shown.description ?? sharedDescription }),
+    url: described.linksOption && shown.itemWebUrl ? shown.itemWebUrl : itemPageUrl(linkedId),
+    optionAxes: axes,
+    optionValues: optionValues(items, axes),
+    priceRange: priceRange(items),
+    options: selection.listed.map((item) => listingOption(item, axes)),
+    optionCount: items.length,
+    optionFilter: filter,
+    matchingOptions: selection.matching,
+  };
+}
+
+function priceRange(items: Item[]): ListingDetails['priceRange'] {
+  const spread = priceSpread(items);
+  if (!spread) return undefined;
+  const low = browsePrice(spread.low.price)!;
+  const high = browsePrice(spread.high.price)!;
+  return { low: low.text, high: high.text, lowNumeric: low.numeric, highNumeric: high.numeric };
+}
+
+function listingOption(item: Item, axes: string[]): ListingOption {
+  const price = browsePrice(item.price);
+  return {
+    id: item.itemId,
+    aspects: aspectsNamed(item, axes),
+    price: price?.text,
+    priceNumeric: price?.numeric,
+    available: isAvailable(item),
+    url: item.itemWebUrl ?? itemPageUrl(item.itemId),
   };
 }
 
@@ -88,6 +166,5 @@ function totalText(
 }
 
 function amountText(price: BrowsePrice): string {
-  const symbol = price.currency ? currencySymbol(price.currency) : '';
-  return `${symbol}${price.value}`;
+  return browsePrice(price)!.text;
 }

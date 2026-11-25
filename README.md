@@ -180,8 +180,9 @@ Get full details for a specific listing using an ID from search results.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, or `geartrade` |
+| `listingId` | Yes | | Listing ID from search results; for eBay also a listing link or a Share link (`ebay.us`, `ebay.io`) |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, or `geartrade`; not needed for an eBay link or an id like `ebay:123` |
+| `options` | No | | eBay only: the options wanted from a listing sold in several, e.g. `{"Size": ["L"]}` |
 
 **Data returned per marketplace:**
 
@@ -198,6 +199,8 @@ Get full details for a specific listing using an ID from search results.
 | Brand | — | — | Yes | — |
 | Delivery types | Yes | — | — | — |
 | Shipping | Yes/No | Cost per service | Yes/No | Always included |
+
+An eBay listing sold in several options (sizes, colours) also shows what the options differ by, every value they come in, the price range and a few options with their own price and link.
 
 ### `list_marketplaces`
 
