@@ -82,6 +82,14 @@ export interface PoshmarkPost {
   cover_shot?: PoshmarkPicture;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPost(value: unknown): value is PoshmarkPost {
+  return isRecord(value) && typeof value.id === 'string';
+}
+
 type SearchFilters = Pick<SearchParams, 'sort' | 'condition' | 'category' | 'brand' | 'department' | 'sizes' | 'colors'>;
 type PriceShaping = Pick<SearchParams, 'sort' | 'minPrice' | 'maxPrice'>;
 
@@ -165,9 +173,10 @@ export function toListing(post: PoshmarkPost): Listing {
 }
 
 export function toListingDetails(post: PoshmarkPost): ListingDetails {
-  const images = (post.pictures ?? [])
+  const images = (Array.isArray(post.pictures) ? post.pictures : [])
+    .filter(isRecord)
     .map((p) => p.url_large || p.url)
-    .filter((u): u is string => !!u);
+    .filter((u): u is string => typeof u === 'string' && u !== '');
   const cover = post.cover_shot?.url_large || post.picture_url;
   if (images.length === 0 && cover) images.push(cover);
   return {
@@ -204,9 +213,8 @@ export function postIdFrom(listingId: string): string {
 
 /** The posts in a search reply, or null when the reply is not one: an error envelope or a changed shape is a failed attempt, not an empty search. */
 export function postsFrom(body: unknown): PoshmarkPost[] | null {
-  const data = (body as { data?: unknown } | null)?.data;
-  if (!Array.isArray(data)) return null;
-  return data.filter((p): p is PoshmarkPost => typeof (p as PoshmarkPost | null)?.id === 'string');
+  if (!isRecord(body) || !Array.isArray(body.data)) return null;
+  return body.data.filter(isPost);
 }
 
 export type PostReply = { kind: 'post'; post: PoshmarkPost } | { kind: 'not_found' };
@@ -214,10 +222,11 @@ export type PostReply = { kind: 'post'; post: PoshmarkPost } | { kind: 'not_foun
 /** What a single-post reply says, or null when it is neither a post nor a not-found. The endpoint answers with the post
  *  itself, not under `data` like a search, and a gone listing is HTTP 200 with a NotFoundError envelope. */
 export function postReply(body: unknown): PostReply | null {
-  const post = (body as { data?: unknown } | null)?.data ?? body;
-  if (typeof (post as PoshmarkPost | null)?.id === 'string') return { kind: 'post', post: post as PoshmarkPost };
-  const error = (body as { error?: { errorType?: string; statusCode?: number } } | null)?.error;
-  if (error?.errorType === 'NotFoundError' || error?.statusCode === 404) return { kind: 'not_found' };
+  if (!isRecord(body)) return null;
+  const post = body.data ?? body;
+  if (isPost(post)) return { kind: 'post', post };
+  const { error } = body;
+  if (isRecord(error) && (error.errorType === 'NotFoundError' || error.statusCode === 404)) return { kind: 'not_found' };
   return null;
 }
 
@@ -241,8 +250,8 @@ async function getJson<T>(url: string, read: (body: unknown) => T | null): Promi
       } else {
         lastError = `status=${res.status}`;
       }
-    } catch (err: any) {
-      lastError = err?.message || String(err);
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
     }
     console.log(`[poshmark] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastError})`);
   }

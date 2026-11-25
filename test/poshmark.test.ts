@@ -231,10 +231,11 @@ describe('price order', () => {
 
 describe('replies', () => {
   it('reads posts with an id out of a search reply, and anything else as no reply at all', () => {
-    expect(postsFrom({ data: [post(), { title: 'no id' }, null] })).toEqual([post()]);
+    expect(postsFrom({ data: [post(), { title: 'no id' }, null, 5, 'x'] })).toEqual([post()]);
     expect(postsFrom({ data: [] })).toEqual([]);
     expect(postsFrom({ error: { code: 'internal' } })).toBeNull();
     expect(postsFrom(null)).toBeNull();
+    expect(postsFrom({ data: 'posts' })).toBeNull();
   });
 
   it('reads a single-post reply as the post, a not-found, or nothing usable', () => {
@@ -245,6 +246,15 @@ describe('replies', () => {
     expect(postReply({ error: { statusCode: 500 } })).toBeNull();
     expect(postReply({})).toBeNull();
     expect(postReply(null)).toBeNull();
+    expect(postReply('NotFoundError')).toBeNull();
+    expect(postReply({ error: 'NotFoundError' })).toBeNull();
+  });
+
+  it('skips photos that are not objects and reads no photos from a pictures value that is not a list', () => {
+    const reply = postReply({ ...post({ picture_url: undefined }), pictures: [null, 'https://cdn/raw.jpg', { url_large: 5 }, { url: 'https://cdn/u.jpg' }] });
+    expect(reply && detailsFromReply(ID, reply).images).toEqual(['https://cdn/u.jpg']);
+    const unlisted = postReply({ ...post({ picture_url: undefined }), pictures: 'https://cdn/raw.jpg' });
+    expect(unlisted && detailsFromReply(ID, unlisted).images).toEqual([]);
   });
 
   it('turns a post into details and a not-found into an error naming the listing', () => {
