@@ -23,7 +23,7 @@ const SEARCH_PAGE = 'https://www.depop.com/search/';
 const PRODUCT_URL = 'https://www.depop.com/products/';
 
 const MONEY = /[£$€]\s?\d[\d.,]*/g;
-const SHIPPING_COST = /\+\s*[£$€]\s?\d[\d.,]*(?:\s*shipping)?|[£$€]\s?\d[\d.,]*\s*shipping/gi;
+const SHIPPING_COST = /\+\s*[£$€]\s?\d[\d.,]*(?:\s*shipping)?/gi;
 const SOLD_BY = /Sold by @(\S+)\s*$/;
 const LISTED_BY = /^item listed by (\S+)/;
 

@@ -744,6 +744,7 @@ describe('cardPrice', () => {
     ['Levi\'s 34" $68.95 $38.24 +$10.00 shipping', '$38.24'],
     ['Levi\'s 28" £26.95 £13.82', '£13.82'],
     ['Levi\'s 28" $17.50', '$17.50'],
+    ['Levi\'s £26.95 +£3.50', '£26.95'],
     ['Free shipping', undefined],
   ])('reads %s as %s', (text, price) => {
     expect(cardPrice(text)).toBe(price);
