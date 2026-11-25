@@ -14,8 +14,17 @@ export interface Listing {
   images?: string[];
   seller?: string;
   condition?: string;
+  /** The cheapest way to get it shipped: an amount, free, or calculated at checkout. */
+  shipping?: string;
+  /** Price plus `shipping`, before any sales tax, when shipping is a known amount. */
+  total?: string;
   marketplace: string;
   scrapedAt: string;
+}
+
+export interface ShippingChoice {
+  service?: string;
+  cost: string;
 }
 
 export const CONDITIONS = ['new', 'like_new', 'excellent', 'good', 'fair', 'used', 'any'] as const;
@@ -66,6 +75,8 @@ export interface ListingDetails {
   brand?: string;
   deliveryTypes?: string[];
   isShippingOffered?: boolean;
+  shipping?: string;
+  shippingOptions?: ShippingChoice[];
   url: string;
   title?: string;
   price?: string;

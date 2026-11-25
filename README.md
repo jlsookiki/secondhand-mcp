@@ -172,6 +172,7 @@ Search for items across marketplaces.
 | Condition | — | Yes | — | — |
 | Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail |
 | Seller | Yes | Yes | — | — |
+| Shipping cost | — | Cheapest, with delivered total | — | — |
 
 ### `get_listing_details`
 
@@ -196,7 +197,7 @@ Get full details for a specific listing using an ID from search results.
 | Seller | Name | Username | Username | Username |
 | Brand | — | — | Yes | — |
 | Delivery types | Yes | — | — | — |
-| Shipping | Yes/No | Service codes | Yes/No | Always included |
+| Shipping | Yes/No | Cost per service | Yes/No | Always included |
 
 ### `list_marketplaces`
 

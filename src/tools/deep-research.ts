@@ -86,6 +86,8 @@ export async function researchFetch(args: unknown): Promise<ToolResult> {
           images: details.images,
           deliveryTypes: details.deliveryTypes,
           isShippingOffered: details.isShippingOffered,
+          shipping: details.shipping,
+          shippingOptions: details.shippingOptions,
           unavailable: details.unavailable,
         },
       })

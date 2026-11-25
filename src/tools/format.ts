@@ -66,11 +66,20 @@ function cheapestFirst(listings: Listing[]): Listing[] {
 
 function listingFooter(listing: Listing, includeImages: boolean, indent: string): string[] {
   const lines: string[] = [];
+  const shipping = shippingLine(listing);
+  if (shipping) lines.push(indent + shipping);
   const photos = photoLine(listing.images, includeImages);
   if (photos) lines.push(indent + photos);
   lines.push(`${indent}🆔 ${listing.id}`);
   lines.push(`${indent}🔗 ${listing.url}`);
   return lines;
+}
+
+/** A search result's cheapest shipping and, when that is a known amount, what it costs delivered. */
+export function shippingLine(listing: Pick<Listing, 'shipping' | 'total'>): string | undefined {
+  if (!listing.shipping) return undefined;
+  const total = listing.total ? ` (${listing.total} delivered)` : '';
+  return `📦 Shipping: ${listing.shipping}${total}`;
 }
 
 function photoLine(images: string[] | undefined, includeImages: boolean): string | undefined {
@@ -105,6 +114,15 @@ export function factLines(details: ListingDetails): string[] {
 
 function priceText(price: string, originalPrice: string | undefined): string {
   return originalPrice ? `${price} (was ${originalPrice})` : price;
+}
+
+/** The cheapest shipping and what each service costs, or just whether it ships when the marketplace gives no costs. */
+export function detailShippingLines(details: ListingDetails): string[] {
+  if (!details.shipping) return details.isShippingOffered ? ['📦 Shipping available'] : [];
+  const services = (details.shippingOptions ?? []).map(
+    (option) => `   ${option.service ?? 'Shipping'}: ${option.cost}`
+  );
+  return [`📦 Shipping: ${details.shipping}`, ...services];
 }
 
 export function formatListingDetails(details: ListingDetails): string {
@@ -142,9 +160,7 @@ export function formatListingDetails(details: ListingDetails): string {
     lines.push(`🚚 Delivery: ${details.deliveryTypes.join(', ')}`);
   }
 
-  if (details.isShippingOffered) {
-    lines.push(`📦 Shipping available`);
-  }
+  lines.push(...detailShippingLines(details));
 
   for (const part of details.unavailable ?? []) {
     lines.push(`⚠️ ${UNAVAILABLE_NOTES[part]}`);

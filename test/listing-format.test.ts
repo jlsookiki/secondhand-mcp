@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { factLines, formatListingDetails } from '../src/tools/format.js';
+import { detailShippingLines, factLines, formatListingDetails, formatMultipleResults, formatSingleResult, shippingLine } from '../src/tools/format.js';
 import { registerMarketplace } from '../src/marketplaces/index.js';
 import { researchFetch } from '../src/tools/deep-research.js';
 import type { ListingDetails } from '../src/types.js';
@@ -110,5 +110,74 @@ describe('research fetch facts', () => {
 
   it('falls back to the description for a title when the listing has none', async () => {
     expect((await fetchFrom(details({ description: 'Barely ridden.\nGarage kept.' }))).title).toBe('Barely ridden.');
+  });
+});
+
+describe('shipping lines', () => {
+  it('writes a search result’s shipping with its delivered total when known', () => {
+    expect(shippingLine({ shipping: '$8.95', total: '$18.95' })).toBe('📦 Shipping: $8.95 ($18.95 delivered)');
+    expect(shippingLine({ shipping: 'Calculated at checkout' })).toBe('📦 Shipping: Calculated at checkout');
+    expect(shippingLine({})).toBeUndefined();
+  });
+
+  it('puts the shipping line on each search result', () => {
+    const listing = {
+      id: 'v1|1|0',
+      title: 'Lamp',
+      price: '$10.00',
+      url: 'https://www.ebay.com/itm/1',
+      marketplace: 'ebay',
+      scrapedAt: '2026-11-25T00:00:00.000Z',
+      shipping: 'Free',
+      total: '$10.00',
+    };
+    const params = { query: 'lamp', location: 'Austin, TX' };
+    const result = { marketplace: 'ebay', success: true, listings: [listing] };
+
+    expect(formatSingleResult(result, params, false)).toContain('   📦 Shipping: Free ($10.00 delivered)');
+    expect(formatMultipleResults([result], params, false)).toContain('    📦 Shipping: Free ($10.00 delivered)');
+  });
+
+  it('writes the cheapest shipping and each service on a listing', () => {
+    const lines = detailShippingLines(
+      details({
+        isShippingOffered: true,
+        shipping: 'Calculated at checkout',
+        shippingOptions: [{ service: 'USPS Ground Advantage', cost: '$6.50' }, { cost: 'Calculated at checkout' }],
+      })
+    );
+
+    expect(lines).toEqual([
+      '📦 Shipping: Calculated at checkout',
+      '   USPS Ground Advantage: $6.50',
+      '   Shipping: Calculated at checkout',
+    ]);
+  });
+
+  it('says only that a listing ships when the marketplace gives no cost', () => {
+    expect(detailShippingLines(details({ isShippingOffered: true }))).toEqual(['📦 Shipping available']);
+    expect(detailShippingLines(details({ isShippingOffered: false }))).toEqual([]);
+  });
+
+  it('carries the shipping into the listing details text', () => {
+    expect(formatListingDetails(details({ shipping: 'Free', shippingOptions: [{ service: 'Standard', cost: 'Free' }] }))).toContain(
+      '📦 Shipping: Free\n   Standard: Free'
+    );
+  });
+
+  it('carries the shipping into the research fetch metadata', async () => {
+    registerMarketplace({
+      name: 'shipmarket',
+      displayName: 'Ship market',
+      requiresAuth: false,
+      search: async () => ({ marketplace: 'shipmarket', success: true, listings: [] }),
+      healthCheck: async () => true,
+      getListingDetails: async () => details({ shipping: '$6.50', shippingOptions: [{ service: 'Standard', cost: '$6.50' }] }),
+    } as never);
+
+    const reply = await researchFetch({ id: 'shipmarket:1' });
+    const document = JSON.parse((reply.content[0] as { text: string }).text);
+
+    expect(document.metadata).toMatchObject({ shipping: '$6.50', shippingOptions: [{ service: 'Standard', cost: '$6.50' }] });
   });
 });
