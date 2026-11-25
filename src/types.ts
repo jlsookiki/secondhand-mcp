@@ -61,6 +61,7 @@ export interface ListingDetails {
   location?: string;
   locationCoords?: { latitude: number; longitude: number };
   seller?: string;
+  brand?: string;
   deliveryTypes?: string[];
   isShippingOffered?: boolean;
   url: string;

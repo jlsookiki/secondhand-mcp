@@ -514,6 +514,13 @@ describe('get_listing_details', () => {
     expect(text).toContain("The description, location and seller couldn't be loaded right now");
   });
 
+  it('shows the brand separately from the seller', async () => {
+    h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
+    const text = textOf(await call('get_listing_details', { listingId: '1', marketplace: 'depop' }));
+    expect(text).toContain('👤 Seller: mesmeriser');
+    expect(text).toContain("🏷️ Brand: Levi's");
+  });
+
   it('renders the listing body without image fetching by default', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
