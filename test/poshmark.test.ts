@@ -10,6 +10,8 @@ import {
   priceOf,
   requestCount,
   searchQuery,
+  sortedByPrice,
+  sortsByPrice,
   toListing,
   toListingDetails,
   withinPriceBounds,
@@ -62,11 +64,22 @@ describe('search request', () => {
     expect(buildSearchRequest('levis', 48, {})).toEqual({ query: 'levis', count: '48', filters: UNFILTERED });
   });
 
-  it('asks for the limit, at most a page, and a full page whenever price bounds will cut it', () => {
-    expect(requestCount(10, false)).toBe(10);
-    expect(requestCount(100, false)).toBe(48);
-    expect(requestCount(0, false)).toBe(1);
-    expect(requestCount(10, true)).toBe(48);
+  it('asks for the limit, at most a page, and a full page whenever price bounds or a price sort will cut or order it', () => {
+    expect(requestCount(10, {})).toBe(10);
+    expect(requestCount(100, {})).toBe(48);
+    expect(requestCount(0, {})).toBe(1);
+    expect(requestCount(10, { sort: 'newest' })).toBe(10);
+    expect(requestCount(10, { minPrice: 0 })).toBe(48);
+    expect(requestCount(10, { maxPrice: 50 })).toBe(48);
+    expect(requestCount(10, { sort: 'price_low_to_high' })).toBe(48);
+    expect(requestCount(10, { sort: 'price_high_to_low' })).toBe(48);
+  });
+
+  it('counts only the two price sorts as sorting by price', () => {
+    expect(sortsByPrice('price_low_to_high')).toBe(true);
+    expect(sortsByPrice('price_high_to_low')).toBe(true);
+    expect(sortsByPrice('relevance')).toBe(false);
+    expect(sortsByPrice(undefined)).toBe(false);
   });
 
   it.each([
@@ -81,11 +94,13 @@ describe('search request', () => {
   it.each([
     ['relevance', 'relevance'],
     ['newest', 'added_desc'],
-    ['price_low_to_high', 'price_asc'],
-    ['price_high_to_low', 'price_desc'],
     ['most_popular', 'like_count'],
   ] as const)('sends sort %s as %s', (sort, sortBy) => {
     expect(buildSearchRequest('x', 48, { sort }).sort_by).toBe(sortBy);
+  });
+
+  it.each(['price_low_to_high', 'price_high_to_low'] as const)('keeps price sort %s off the request, leaving it relevance-ranked', (sort) => {
+    expect(buildSearchRequest('x', 48, { sort })).not.toHaveProperty('sort_by');
   });
 
   it('leaves condition, sort and the other filters out when not asked for or not ones Poshmark has', () => {
@@ -203,6 +218,16 @@ describe('price bounds', () => {
   });
 });
 
+describe('price order', () => {
+  it('orders by price for a price sort with unpriced listings last, and keeps the order otherwise', () => {
+    const shuffled = priced(20, undefined, 5, 30, 10);
+    expect(sortedByPrice(shuffled, 'price_low_to_high').map((l) => l.priceNumeric)).toEqual([5, 10, 20, 30, undefined]);
+    expect(sortedByPrice(shuffled, 'price_high_to_low').map((l) => l.priceNumeric)).toEqual([30, 20, 10, 5, undefined]);
+    expect(sortedByPrice(shuffled, 'newest').map((l) => l.priceNumeric)).toEqual([20, undefined, 5, 30, 10]);
+    expect(sortedByPrice(shuffled, undefined)).toBe(shuffled);
+  });
+});
+
 describe('replies', () => {
   it('reads posts with an id out of a search reply, and anything else as no reply at all', () => {
     expect(postsFrom({ data: [post(), { title: 'no id' }, null] })).toEqual([post()]);
@@ -257,11 +282,29 @@ describe('search', () => {
     expect(result.totalFound).toBe(1);
   });
 
-  it('asks for a full page when price bounds will cut it, so a bounded search is not left short', async () => {
-    const page = Array.from({ length: 48 }, (_, i) => post({ id: i.toString(16).padStart(24, '0'), price_amount: { val: String(i + 1) } }));
+  it.each([
+    ['price_low_to_high', [40, 41, 42, 43, 44]],
+    ['price_high_to_low', [48, 47, 46, 45, 44]],
+  ] as const)('sorts a shuffled relevance page by price for %s after the bounds, then applies the limit', async (sort, expected) => {
+    const prices = Array.from({ length: 48 }, (_, i) => ((i * 11) % 48) + 1);
+    const page = prices.map((p, i) => post({ id: i.toString(16).padStart(24, '0'), price_amount: { val: String(p) } }));
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      return json({ data: page.slice(0, Number(requestOf(url).count)) })();
+    }));
+    const result = await new PoshmarkMarketplace().search({ query: 'x', sort, minPrice: 40, limit: 5 });
+    expect(requestOf(urls[0])).not.toHaveProperty('sort_by');
+    expect(requestOf(urls[0]).count).toBe('48');
+    expect(result.listings.map((l) => l.priceNumeric)).toEqual(expected);
+  });
+
+  it('asks for a full page for a price sort without bounds, so the cheapest of the page come back', async () => {
+    const prices = [30, 12, 48, 7, 25, 3, 19];
+    const page = prices.map((p, i) => post({ id: i.toString(16).padStart(24, '0'), price_amount: { val: String(p) } }));
     vi.stubGlobal('fetch', vi.fn(async (url: string) => json({ data: page.slice(0, Number(requestOf(url).count)) })()));
-    const result = await new PoshmarkMarketplace().search({ query: 'x', sort: 'price_low_to_high', minPrice: 40, limit: 5 });
-    expect(result.listings.map((l) => l.priceNumeric)).toEqual([40, 41, 42, 43, 44]);
+    const result = await new PoshmarkMarketplace().search({ query: 'x', sort: 'price_low_to_high', limit: 2 });
+    expect(result.listings.map((l) => l.priceNumeric)).toEqual([3, 7]);
   });
 
   it('treats a reply without a data array as a failed attempt, but an empty one as no results', async () => {

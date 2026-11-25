@@ -34,11 +34,11 @@ const CONDITION_NAMES: Record<string, string> = {
   uf: 'Fair',
 };
 
-const SORT_MAP: Record<string, string> = {
+/** Price sorts are missing on purpose: Poshmark's price-sorted index ignores relevance and leads with placeholder posts
+ *  ($3 closet promotions, $50,000 wanted posts), so price order is applied here over a relevance-ranked page. */
+const SERVER_SORTS: Record<string, string> = {
   relevance: 'relevance',
   newest: 'added_desc',
-  price_low_to_high: 'price_asc',
-  price_high_to_low: 'price_desc',
   most_popular: 'like_count',
 };
 
@@ -82,10 +82,15 @@ export interface PoshmarkPost {
 }
 
 type SearchFilters = Pick<SearchParams, 'sort' | 'condition' | 'category' | 'brand' | 'department' | 'sizes' | 'colors'>;
+type PriceShaping = Pick<SearchParams, 'sort' | 'minPrice' | 'maxPrice'>;
 
-/** Price bounds are applied after the fetch, so a bounded search asks for a full page to have enough left to show. */
-export function requestCount(limit: number, hasPriceBounds: boolean): number {
-  if (hasPriceBounds) return PAGE_SIZE;
+export function sortsByPrice(sort: SearchParams['sort']): boolean {
+  return sort === 'price_low_to_high' || sort === 'price_high_to_low';
+}
+
+/** Price bounds and price order are applied after the fetch, so either asks for a full page to cut and order. */
+export function requestCount(limit: number, shaping: PriceShaping): number {
+  if (shaping.minPrice != null || shaping.maxPrice != null || sortsByPrice(shaping.sort)) return PAGE_SIZE;
   return Math.min(Math.max(limit, 1), PAGE_SIZE);
 }
 
@@ -101,7 +106,7 @@ export function buildSearchRequest(query: string, count: number, filters: Search
     count: String(count),
     filters: { department: 'All', inventory_status: ['available'] },
   };
-  const sort = filters.sort ? SORT_MAP[filters.sort] : undefined;
+  const sort = filters.sort ? SERVER_SORTS[filters.sort] : undefined;
   if (sort) request.sort_by = sort;
   const condition = filters.condition ? CONDITION_CODES[filters.condition] : undefined;
   if (condition) request.filters.condition = [condition];
@@ -184,6 +189,13 @@ export function withinPriceBounds(listings: Listing[], minPrice?: number, maxPri
   });
 }
 
+/** Orders listings by price for a price sort, unpriced ones last; any other sort keeps Poshmark's order. */
+export function sortedByPrice(listings: Listing[], sort: SearchParams['sort']): Listing[] {
+  if (sort === 'price_low_to_high') return [...listings].sort((a, b) => (a.priceNumeric ?? Infinity) - (b.priceNumeric ?? Infinity));
+  if (sort === 'price_high_to_low') return [...listings].sort((a, b) => (b.priceNumeric ?? -Infinity) - (a.priceNumeric ?? -Infinity));
+  return listings;
+}
+
 /** A listing is addressed by its 24-character id, which also ends every listing slug. */
 export function postIdFrom(listingId: string): string {
   return listingId.match(/([a-f0-9]{24})(?:[/?#].*)?$/i)?.[1] ?? listingId;
@@ -242,11 +254,12 @@ export class PoshmarkMarketplace extends BaseMarketplace {
   readonly requiresAuth = false;
 
   async search(params: SearchParams): Promise<SearchResult> {
-    const { query, maxPrice, minPrice, limit = PAGE_SIZE } = params;
+    const { query, maxPrice, minPrice, sort, limit = PAGE_SIZE } = params;
     try {
-      const count = requestCount(limit, minPrice != null || maxPrice != null);
+      const count = requestCount(limit, params);
       const posts = await getJson(searchUrl(buildSearchRequest(query, count, params)), postsFrom);
-      const listings = withinPriceBounds(posts.map(toListing), minPrice, maxPrice).slice(0, limit);
+      const bounded = withinPriceBounds(posts.map(toListing), minPrice, maxPrice);
+      const listings = sortedByPrice(bounded, sort).slice(0, limit);
       return { marketplace: this.name, success: true, listings, totalFound: listings.length };
     } catch (error) {
       return this.createError(`Poshmark search failed: ${error}`);
