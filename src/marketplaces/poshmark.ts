@@ -28,6 +28,7 @@ const CONDITION_CODES: Record<string, string> = {
 
 const CONDITION_NAMES: Record<string, string> = {
   nwt: 'New with tags',
+  not_nwt: 'New without tags',
   ret: 'New',
   uln: 'Like new',
   ug: 'Good',

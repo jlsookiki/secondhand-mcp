@@ -163,6 +163,7 @@ describe('listing shape', () => {
 
   it.each([
     ['nwt', 'New with tags'],
+    ['not_nwt', 'New without tags'],
     ['ret', 'New'],
     ['uln', 'Like new'],
     ['uf', 'Fair'],
