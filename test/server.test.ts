@@ -591,6 +591,19 @@ describe('get_listing_details', () => {
     expect(text).not.toContain('Options');
   });
 
+  it('says an options choice does not apply to a listing sold as one item', async () => {
+    h.impl.ebay = { details: () => details({ optionFilter: { Size: ['L'] } }) };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay', options: { Size: 'L' } }));
+    expect(text).toContain('ℹ️ This listing is sold as one item, so the options choice does not apply');
+    expect(text).not.toContain('🎛️');
+  });
+
+  it("says a listing's other options could not be loaded", async () => {
+    h.impl.ebay = { details: () => details({ unavailable: ['options'] }) };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay' }));
+    expect(text).toContain("⚠️ This listing's other options couldn't be loaded right now; asking again may bring them back.");
+  });
+
   it('shows the brand separately from the seller', async () => {
     h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
     const text = textOf(await call('get_listing_details', { listingId: '1', marketplace: 'depop' }));

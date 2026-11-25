@@ -802,6 +802,17 @@ describe('EbayMarketplace multi-variation listings', () => {
 
     expect(details.id).toBe('v1|555|12');
     expect(details.options).toBeUndefined();
+    expect(details.unavailable).toEqual(['options']);
+  });
+
+  it('does not call an option sold as one item when its listing cannot be read', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), primaryItemGroup: { itemGroupId: '555' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => browseError(11002)]]);
+
+    const details = await market().getListingDetails('v1|555|12', { Size: ['L'] });
+
+    expect(details.optionFilter).toBeUndefined();
+    expect(details.unavailable).toEqual(['options']);
   });
 
   it('reads the group eBay names for the option', async () => {
@@ -928,13 +939,14 @@ describe('EbayMarketplace multi-variation listings', () => {
     expect(details.optionValues).toEqual({ Size: ['L', 'M', 'S'] });
   });
 
-  it('ignores a choice for a listing sold as a single item', async () => {
+  it('keeps the choice made for a listing sold as a single item, with no options', async () => {
     route([[LEGACY, () => json({ itemId: 'v1|777|0', itemWebUrl: 'https://www.ebay.com/itm/777' })]]);
 
     const details = await market().getListingDetails('777', { Size: ['L'] });
 
     expect(details.options).toBeUndefined();
-    expect(details.optionFilter).toBeUndefined();
+    expect(details.optionCount).toBeUndefined();
+    expect(details.optionFilter).toEqual({ Size: ['L'] });
   });
 
   it('narrows the options of a listing reached through one of its options', async () => {

@@ -10,6 +10,12 @@ describe('optionsNote', () => {
     expect(optionsNote(details({}))).toBeUndefined();
   });
 
+  it('says a choice does not apply to a listing sold as one item', () => {
+    expect(optionsNote(details({ optionFilter: { Size: ['L'] } }))).toBe(
+      'This listing is sold as one item, so the options choice does not apply; check its description for the size, colour or other details.'
+    );
+  });
+
   it('says nothing when every option is shown', () => {
     expect(optionsNote(details({ optionAxes: ['Size'], options: [option('S'), option('M')], optionCount: 2 }))).toBeUndefined();
   });

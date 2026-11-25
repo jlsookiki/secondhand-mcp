@@ -107,7 +107,7 @@ export class EbayMarketplace extends BaseMarketplace {
     }
   }
 
-  /** `optionFilter` narrows a multi-variation listing to the options named; single items ignore it. */
+  /** `optionFilter` narrows a multi-variation listing to the options named; a single item only carries it back. */
   async getListingDetails(itemId: string, optionFilter?: OptionFilter): Promise<ListingDetails> {
     if (!this.token) {
       throw new Error('eBay credentials not configured. Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET environment variables.');
@@ -123,9 +123,9 @@ export class EbayMarketplace extends BaseMarketplace {
         // The option already answered, so a listing that cannot be read only loses the other options.
         const groupId = item.primaryItemGroup?.itemGroupId ?? ref.legacyId;
         const withOptions = await this.group(groupId, token, optionFilter, item).catch(() => undefined);
-        if (withOptions) return withOptions;
+        return withOptions ?? { ...itemDetails(item), unavailable: ['options'] };
       }
-      return itemDetails(item);
+      return { ...itemDetails(item), ...(optionFilter && { optionFilter }) };
     }
 
     if (ref.kind === 'opaque' || !answersFromGroup(ref, reply.errorIds)) throw lookupError(reply);

@@ -86,6 +86,7 @@ const PRICE_IS_FOR_ONE_OPTION =
 const UNAVAILABLE_NOTES: Record<ListingPart, string> = {
   photos: "Photos couldn't be loaded right now; asking again may bring them back.",
   description: "The description, location and seller couldn't be loaded right now; asking again may bring them back.",
+  options: "This listing's other options couldn't be loaded right now; asking again may bring them back.",
 };
 
 export function formatListingDetails(details: ListingDetails): string {
@@ -127,6 +128,9 @@ export function formatListingDetails(details: ListingDetails): string {
   if (details.optionCount !== undefined) {
     lines.push('');
     lines.push(...optionLines(details));
+  } else {
+    const note = optionsNote(details);
+    if (note) lines.push(`ℹ️ ${note}`);
   }
 
   if (details.images.length > 0) {
@@ -168,9 +172,12 @@ function optionLine(option: ListingOption): string {
 const NO_OPTION_MATCHES =
   "No option of this listing matches that choice. Check it against the values listed above: if the shopper's choice is there under a slightly different name, look again using that name; if it is not there, tell the shopper which values the listing does come in.";
 
+const SOLD_AS_ONE_ITEM =
+  'This listing is sold as one item, so the options choice does not apply; check its description for the size, colour or other details.';
+
 /** What the assistant is told about options it was not shown, if anything. */
 export function optionsNote(details: ListingDetails): string | undefined {
-  if (details.optionCount === undefined) return undefined;
+  if (details.optionCount === undefined) return details.optionFilter ? SOLD_AS_ONE_ITEM : undefined;
   const shown = details.options?.length ?? 0;
   if (details.optionFilter) {
     if (!details.matchingOptions) return NO_OPTION_MATCHES;

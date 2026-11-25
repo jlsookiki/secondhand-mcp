@@ -68,7 +68,7 @@ export interface ListingOption {
 }
 
 /** A part of a listing that a marketplace failed to return this time. */
-export type ListingPart = 'photos' | 'description';
+export type ListingPart = 'photos' | 'description' | 'options';
 
 export interface ListingDetails {
   id: string;
@@ -91,7 +91,7 @@ export interface ListingDetails {
   /** A few options, available first; with `optionFilter`, the options that match it. */
   options?: ListingOption[];
   optionCount?: number;
-  /** The choice these options were narrowed to, and how many matched it. */
+  /** The choice these options were narrowed to, and how many matched it; alone, a choice made for a listing sold as one item. */
   optionFilter?: OptionFilter;
   matchingOptions?: number;
 }
