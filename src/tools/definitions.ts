@@ -116,11 +116,11 @@ export function toolDefinitions(): AnnotatedTool[] {
         properties: {
           listingId: {
             type: 'string',
-            description: 'The listing ID (from search results or a marketplace URL)'
+            description: 'The listing ID (from search results or a marketplace URL), sent as text. eBay also takes a listing link or a Share link (ebay.us, ebay.io).'
           },
           marketplace: {
             type: 'string',
-            description: 'Which marketplace the listing is from (default: facebook)',
+            description: 'Which marketplace the listing is from (default: facebook). Can be left out for an eBay link or an id prefixed like "ebay:123".',
             default: 'facebook'
           },
           imageMode: {

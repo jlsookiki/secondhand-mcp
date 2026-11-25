@@ -501,6 +501,29 @@ describe('get_listing_details', () => {
     expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: '123456' }]);
   });
 
+  it('refuses a numeric listing id too long to be exact, rather than looking up another listing', async () => {
+    const res = await call('get_listing_details', { listingId: 29077057795219417, marketplace: 'ebay' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('Pass listingId as text');
+    expect(h.detailCalls).toEqual([]);
+  });
+
+  it.each(['https://www.ebay.com/itm/555?var=12', 'https://ebay.us/m/m2KbLr', 'ebay:555'])(
+    'opens %s on eBay without a marketplace',
+    async (listingId) => {
+      h.impl.ebay = { details: () => details() };
+      await call('get_listing_details', { listingId });
+      expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: listingId.replace(/^ebay:/, '') }]);
+    }
+  );
+
+  it('refuses an eBay link sent with another marketplace', async () => {
+    const res = await call('get_listing_details', { listingId: 'https://www.ebay.com/itm/555', marketplace: 'facebook' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('This id belongs to ebay, but marketplace says facebook.');
+    expect(h.detailCalls).toEqual([]);
+  });
+
   it('rejects an image mode it does not know', async () => {
     const res = await call('get_listing_details', { listingId: '1', imageMode: 'base64' });
     expect(res.isError).toBe(true);

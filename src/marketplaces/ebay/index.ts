@@ -13,6 +13,7 @@ import { marketplaceCurrency } from './currency.js';
 import { searchFilter } from './filters.js';
 import { answersFromGroup, groupPath, listsAllOptions, lookupPath, parseEbayItemRef } from './items.js';
 import { groupDetails, itemDetails, summaryListing } from './parse.js';
+import { followShareLink } from './share.js';
 import { BrowseErrorResponse, Item, ItemGroupResponse, ItemSummary, SearchResponse } from './wire.js';
 
 export { currencySymbol } from './currency.js';
@@ -112,7 +113,8 @@ export class EbayMarketplace extends BaseMarketplace {
       throw new Error('eBay credentials not configured. Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET environment variables.');
     }
     const token = await this.token.get();
-    const ref = parseEbayItemRef(itemId);
+    const asked = parseEbayItemRef(itemId);
+    const ref = asked.kind === 'share' ? await followShareLink(asked.url) : asked;
     const reply = await this.read(lookupPath(ref), token);
 
     if (reply.ok) {

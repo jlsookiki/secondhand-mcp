@@ -561,7 +561,7 @@ describe('EbayMarketplace.search failures', () => {
 });
 
 describe('EbayMarketplace.getListingDetails', () => {
-  it.each(['123456', 'v1|123456|0', 'v1|123456'])(
+  it.each(['123456', 'v1|123456|0', 'v1|123456', '123456|0', 'https://www.ebay.com/itm/123456'])(
     'looks listing %s up by its listing number, which also answers for a multi-variation listing',
     async (id) => {
       install();
@@ -573,12 +573,15 @@ describe('EbayMarketplace.getListingDetails', () => {
     }
   );
 
-  it('fetches one option of a multi-variation listing directly, percent-encoding the pipes', async () => {
-    install();
-    await market().getListingDetails('v1|123456|789');
+  it.each(['v1|123456|789', '123456|789', 'https://www.ebay.com/itm/Blue-Lamp/123456?var=789&hash=x'])(
+    'fetches option %s of a multi-variation listing directly, percent-encoding the pipes',
+    async (id) => {
+      install();
+      await market().getListingDetails(id);
 
-    expect(callsTo(ITEM_PATH)[0].url).toBe('https://api.ebay.com/buy/browse/v1/item/v1%7C123456%7C789');
-  });
+      expect(callsTo(ITEM_PATH)[0].url).toBe('https://api.ebay.com/buy/browse/v1/item/v1%7C123456%7C789');
+    }
+  );
 
   it('sends the bearer token and marketplace header', async () => {
     install({ token: () => json({ access_token: 'tok-abc', expires_in: 7200 }) });
@@ -944,6 +947,60 @@ describe('EbayMarketplace multi-variation listings', () => {
     expect(details.id).toBe('v1|555|11');
     expect(details.url).toBe('https://www.ebay.com/itm/555?var=11');
     expect(details.options?.map((o) => o.id)).toEqual(['v1|555|11']);
+  });
+
+  it('opens a listing from an eBay share link without fetching the eBay page', async () => {
+    route([
+      ['https://ebay.us/m/m2KbLr', () => new Response(null, { status: 301, headers: { location: 'https://www.ebay.com/itm/555?mkcid=16&var=&media=COPY' } })],
+      [LEGACY, () => browseError(11006, 400)],
+      [GROUP, () => json(GROUP_BODY)],
+    ]);
+
+    const details = await market().getListingDetails('https://ebay.us/m/m2KbLr');
+
+    const share = calls.find((c) => c.url === 'https://ebay.us/m/m2KbLr')!;
+    expect(share.init).toMatchObject({ redirect: 'manual' });
+    expect(share.init?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls.some((c) => c.url.includes('www.ebay.com'))).toBe(false);
+    expect(itemCalls()).toEqual(['/item/get_item_by_legacy_id?legacy_item_id=555', '/item/get_items_by_item_group?item_group_id=555']);
+    expect(details.optionCount).toBe(3);
+  });
+
+  it('opens a listing from an ebay.io share link, as eBay answered one in September 2026', async () => {
+    route([
+      ['https://ebay.io/m/j83XnV', () => new Response(null, {
+        status: 301,
+        headers: { location: 'https://www.ebay.com/itm/267688076938?var=&mkevt=1&mkcid=16&mkrid=711-127632-2357-0&sssrc=4429486&ssuid=Q8360VHnSMu&ssspo=2bXkAJ4TSsu&stype=1&widget_ver=artemis&media=COPY' },
+      })],
+      [LEGACY, () => json({ itemId: 'v1|267688076938|0', itemWebUrl: 'https://www.ebay.com/itm/267688076938' })],
+    ]);
+
+    const details = await market().getListingDetails('https://ebay.io/m/j83XnV');
+
+    expect(details.id).toBe('v1|267688076938|0');
+    expect(itemCalls()).toEqual(['/item/get_item_by_legacy_id?legacy_item_id=267688076938']);
+  });
+
+  it('opens the option a share link names', async () => {
+    route([
+      ['https://ebay.us/m/abc123', () => new Response(null, { status: 301, headers: { location: 'https://www.ebay.com/itm/555?var=12' } })],
+      ['/item/v1%7C555%7C12', () => json(option('12', 'M', '9.99'))],
+    ]);
+
+    const details = await market().getListingDetails('ebay.us/m/abc123');
+
+    expect(details.id).toBe('v1|555|12');
+  });
+
+  it.each([
+    ['a page instead of a redirect', () => new Response('<html></html>', { status: 200 })],
+    ['a redirect off eBay', () => new Response(null, { status: 301, headers: { location: 'https://evil.example/itm/555' } })],
+    ['an unknown code', () => new Response(null, { status: 404 })],
+  ])('fails a share link that answers with %s, without an eBay lookup', async (_label, answer) => {
+    route([['https://ebay.us/m/abc123', answer]]);
+
+    await expect(market().getListingDetails('https://ebay.us/m/abc123')).rejects.toThrow(/^eBay share link did not resolve \(\d+\)$/);
+    expect(itemCalls()).toHaveLength(0);
   });
 
   it('marks search rows sold in several options', async () => {
