@@ -79,7 +79,7 @@ export function toolDefinitions(): AnnotatedTool[] {
           },
           condition: {
             type: 'string',
-            description: 'Item condition filter. eBay: new, like_new, good, fair. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+            description: 'Item condition filter. eBay: new, like_new, excellent, good, fair, used (a used grade also matches better ones). Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
           },
           category: {
             type: 'string',
