@@ -102,6 +102,16 @@ describe('matchesOptionFilter', () => {
     expect(matchesOptionFilter(option, filter)).toBe(matches);
   });
 
+  it.each([
+    [{ Size: '10½' }, { Size: ['10'] }, false],
+    [{ Colour: 'Crème' }, { Colour: ['Creme'] }, true],
+    [{ Color: '白' }, { Color: ['黒'] }, false],
+    [{ Color: '黒' }, { Color: ['黒'] }, true],
+    [{ Color: '–' }, { Color: ['—'] }, false],
+  ])('an option with %j matches %j outside ASCII: %s', (aspects, filter, matches) => {
+    expect(matchesOptionFilter(withAspects(aspects), filter)).toBe(matches);
+  });
+
   it('matches nothing on an option without aspects', () => {
     expect(matchesOptionFilter({}, { Size: ['M'] })).toBe(false);
   });

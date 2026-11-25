@@ -61,16 +61,28 @@ export function optionValues(options: AspectOption[], axes: string[]): Record<st
   return Object.fromEntries(entries);
 }
 
-// Sellers name axes freely ("Color-", "colour", "SIZE"), so names and values compare loosely.
+// Sellers name axes freely ("Color-", "colour", "SIZE"), so names and values
+// compare loosely. NFKD splits "è" into "e" and a mark, which is dropped, and
+// "½" into "1⁄2", so accents fold away while fractions still count.
 function loose(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return text
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function sameLoosely(a: string, b: string): boolean {
+  const looseA = loose(a);
+  return looseA !== '' && looseA === loose(b);
 }
 
 /** Matched on every aspect, not only the varying ones: asking for L on a listing that only comes in L gets all of it. */
 export function matchesOptionFilter(option: AspectOption, filter: OptionFilter): boolean {
   return Object.entries(filter).every(([name, wanted]) => {
-    const aspect = option.localizedAspects?.find((candidate) => loose(candidate.name) === loose(name));
-    return aspect !== undefined && wanted.some((value) => loose(value) === loose(aspect.value));
+    const aspect = option.localizedAspects?.find((candidate) => sameLoosely(candidate.name, name));
+    return aspect !== undefined && wanted.some((value) => sameLoosely(value, aspect.value));
   });
 }
 
