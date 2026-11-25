@@ -241,7 +241,7 @@ describe('EbayMarketplace.search request', () => {
     install();
     await market().search({ query: 'lamp', condition: 'good' });
 
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditionIds:{2750|2990|3000|4000|5000}');
+    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditionIds:{2750|2990|3000|3010|4000|5000|6000}');
   });
 
   it('sends no condition filter for "any"', async () => {

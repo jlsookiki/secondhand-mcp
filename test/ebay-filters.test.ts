@@ -5,11 +5,11 @@ import type { SearchParams } from '../src/types.js';
 describe('conditionFilter', () => {
   it.each([
     ['new', 'conditionIds:{1000|1500|1750}'],
-    ['like_new', 'conditionIds:{2750}'],
-    ['excellent', 'conditionIds:{2750|2990|3000}'],
-    ['good', 'conditionIds:{2750|2990|3000|4000|5000}'],
-    ['fair', 'conditionIds:{2750|2990|3000|4000|5000|3010|6000}'],
-    ['used', 'conditionIds:{2750|2990|3000|4000|5000|3010|6000}'],
+    ['like_new', 'conditionIds:{2750|2990|3000|3010|4000|5000|6000}'],
+    ['excellent', 'conditionIds:{2750|2990|3000|3010|4000|5000|6000}'],
+    ['good', 'conditionIds:{2750|2990|3000|3010|4000|5000|6000}'],
+    ['fair', 'conditionIds:{2750|2990|3000|3010|4000|5000|6000}'],
+    ['used', 'conditionIds:{2750|2990|3000|3010|4000|5000|6000}'],
   ] as const)('names %s by its eBay condition IDs', (condition, filter) => {
     expect(conditionFilter(condition)).toBe(filter);
   });
@@ -27,7 +27,7 @@ describe('conditionFilter', () => {
 describe('searchFilter', () => {
   it('follows the price filter with the condition filter', () => {
     expect(searchFilter({ maxPrice: 50, condition: 'good' }, 'USD')).toBe(
-      'price:[..50],priceCurrency:USD,conditionIds:{2750|2990|3000|4000|5000}'
+      'price:[..50],priceCurrency:USD,conditionIds:{2750|2990|3000|3010|4000|5000|6000}'
     );
   });
 });
