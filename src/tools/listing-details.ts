@@ -1,6 +1,6 @@
 import { getMarketplace, listMarketplaceNames, resizeEbayImageUrl } from '../marketplaces/index.js';
-import { ListingDetails } from '../types.js';
-import { booleanArg, choiceArg, countArg, stringArg } from './arguments.js';
+import { ListingDetails, OptionFilter } from '../types.js';
+import { booleanArg, choiceArg, countArg, optionFilterArg, stringArg } from './arguments.js';
 import { formatListingDetails } from './format.js';
 import { FetchedImage, IMAGE_SIZE_PX, ImageSize, fetchImages } from './images.js';
 import { ToolContent, ToolResult, errorResult, textResult } from './results.js';
@@ -16,10 +16,12 @@ interface ListingDetailsArgs {
   includeImages?: boolean;
   imageSize?: ImageSize;
   maxImages?: number;
+  options?: OptionFilter;
 }
 
 interface DetailsSource {
-  getListingDetails: (id: string) => Promise<ListingDetails>;
+  /** Only eBay sells one listing in several options; other marketplaces ignore the filter. */
+  getListingDetails: (id: string, optionFilter?: OptionFilter) => Promise<ListingDetails>;
 }
 
 /** The marketplace by name, when it can fetch a single listing. */
@@ -35,7 +37,7 @@ export function unsupportedDetails(name: string): ToolResult {
 }
 
 export async function listingDetails(args: unknown): Promise<ToolResult> {
-  const { listingId, marketplace, imageMode, includeImages, imageSize, maxImages } = readArgs(args);
+  const { listingId, marketplace, imageMode, includeImages, imageSize, maxImages, options } = readArgs(args);
   if (!listingId) return errorResult('Missing required parameter: listingId');
 
   const targetMp = marketplace || 'facebook';
@@ -43,7 +45,7 @@ export async function listingDetails(args: unknown): Promise<ToolResult> {
   if (!source) return unsupportedDetails(targetMp);
 
   try {
-    const details = await source.getListingDetails(listingId);
+    const details = await source.getListingDetails(listingId, options);
     if (details.images.length === 0) return textResult(formatListingDetails(details));
     if (maxImages === 0) return textResult(withoutPhotos(details) + photosLeftOutText(details.images.length));
 
@@ -67,6 +69,7 @@ function readArgs(args: unknown): ListingDetailsArgs {
     includeImages: booleanArg(args, 'includeImages'),
     imageSize: choiceArg(args, 'imageSize', IMAGE_SIZES),
     maxImages: countArg(args, 'maxImages'),
+    options: optionFilterArg(args, 'options'),
   };
 }
 

@@ -81,6 +81,11 @@ export async function researchFetch(args: unknown): Promise<ToolResult> {
           deliveryTypes: details.deliveryTypes,
           isShippingOffered: details.isShippingOffered,
           unavailable: details.unavailable,
+          optionAxes: details.optionAxes,
+          optionValues: details.optionValues,
+          priceRange: details.priceRange,
+          options: details.options,
+          optionCount: details.optionCount,
         },
       })
     );

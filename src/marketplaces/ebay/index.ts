@@ -7,12 +7,13 @@
  */
 
 import { BaseMarketplace } from '../base.js';
-import { SearchParams, SearchResult, Listing, ListingDetails } from '../../types.js';
+import { SearchParams, SearchResult, Listing, ListingDetails, OptionFilter } from '../../types.js';
 import { EbayToken } from './auth.js';
 import { marketplaceCurrency } from './currency.js';
 import { searchFilter } from './filters.js';
-import { itemDetails, summaryListing } from './parse.js';
-import { Item, ItemSummary, SearchResponse } from './wire.js';
+import { answersFromGroup, groupPath, listsAllOptions, lookupPath, parseEbayItemRef } from './items.js';
+import { groupDetails, itemDetails, summaryListing } from './parse.js';
+import { BrowseErrorResponse, Item, ItemGroupResponse, ItemSummary, SearchResponse } from './wire.js';
 
 export { currencySymbol } from './currency.js';
 export { resizeEbayImageUrl } from './images.js';
@@ -105,21 +106,45 @@ export class EbayMarketplace extends BaseMarketplace {
     }
   }
 
-  async getListingDetails(itemId: string): Promise<ListingDetails> {
+  /** `optionFilter` narrows a multi-variation listing to the options named; single items ignore it. */
+  async getListingDetails(itemId: string, optionFilter?: OptionFilter): Promise<ListingDetails> {
     if (!this.token) {
       throw new Error('eBay credentials not configured. Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET environment variables.');
     }
     const token = await this.token.get();
+    const ref = parseEbayItemRef(itemId);
+    const reply = await this.read(lookupPath(ref), token);
 
-    // Listing URLs show a bare number; the Browse API wants "v1|123456|0".
-    const apiItemId = /^\d+$/.test(itemId) ? `v1|${itemId}|0` : itemId;
-    const response = await this.browse(`/item/${encodeURIComponent(apiItemId)}`, token);
-
-    if (!response.ok) {
-      throw new Error(`eBay API returned ${response.status}`);
+    if (reply.ok) {
+      const item = reply.body as Item;
+      if (listsAllOptions(ref, item)) {
+        // The option already answered, so a listing that cannot be read only loses the other options.
+        const groupId = item.primaryItemGroup?.itemGroupId ?? ref.legacyId;
+        const withOptions = await this.group(groupId, token, optionFilter, item).catch(() => undefined);
+        if (withOptions) return withOptions;
+      }
+      return itemDetails(item);
     }
 
-    return itemDetails((await response.json()) as Item, itemId);
+    if (ref.kind === 'opaque' || !answersFromGroup(ref, reply.errorIds)) throw lookupError(reply);
+    return this.group(ref.legacyId, token, optionFilter);
+  }
+
+  private async group(groupId: string, token: string, filter?: OptionFilter, chosen?: Item): Promise<ListingDetails> {
+    const reply = await this.read(groupPath(groupId), token);
+    if (!reply.ok) throw lookupError(reply);
+    const group = reply.body as ItemGroupResponse | null;
+    if (!Array.isArray(group?.items) || group.items.length === 0) throw lookupError(reply);
+    return groupDetails(group, { groupId, filter, chosen });
+  }
+
+  /** A Browse reply whose error ids say why a lookup failed; a body that is not JSON reads as none. */
+  private async read(path: string, token: string): Promise<BrowseReply> {
+    const response = await this.browse(path, token);
+    const text = await response.text();
+    const body = parseJson(text);
+    if (response.ok && body === null) throw new Error('eBay API returned a body that is not JSON');
+    return { ok: response.ok, status: response.status, body, errorIds: errorIds(body) };
   }
 
   async healthCheck(): Promise<boolean> {
@@ -140,6 +165,32 @@ export class EbayMarketplace extends BaseMarketplace {
       },
     });
   }
+}
+
+interface BrowseReply {
+  ok: boolean;
+  status: number;
+  body: unknown;
+  errorIds: number[];
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function errorIds(body: unknown): number[] {
+  const errors = (body as BrowseErrorResponse | null)?.errors;
+  if (!Array.isArray(errors)) return [];
+  return errors.map((error) => Number(error?.errorId)).filter(Number.isFinite);
+}
+
+function lookupError(reply: BrowseReply): Error {
+  const ids = reply.errorIds.length > 0 ? ` (${reply.errorIds.join(', ')})` : '';
+  return new Error(`eBay API returned ${reply.status}${ids}`);
 }
 
 function pageQuery(query: string, limit: number, offset: number, filter: string | undefined): string {
