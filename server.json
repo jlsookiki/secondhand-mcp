@@ -7,13 +7,13 @@
     "source": "github"
   },
   "websiteUrl": "https://secondhandmcp.com",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "secondhand-mcp",
-      "version": "0.7.1",
+      "version": "0.8.0",
       "transport": {
         "type": "stdio"
       },
@@ -33,6 +33,12 @@
         {
           "name": "EBAY_MARKETPLACE_ID",
           "description": "eBay regional marketplace, e.g. EBAY_US (default)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "MARKETPLACES",
+          "description": "Comma-separated marketplaces to enable, e.g. facebook,ebay,sidelineswap (default: facebook, ebay, depop, poshmark). SidelineSwap, Play It Again Sports and Geartrade run only when listed",
           "isRequired": false,
           "isSecret": false
         }

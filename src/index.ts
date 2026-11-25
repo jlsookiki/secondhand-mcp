@@ -15,7 +15,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import { initializeMarketplaces } from './marketplaces/index.js';
-import { INSTRUCTIONS, callTool, tools } from './tools/index.js';
+import { INSTRUCTIONS, callTool, toolDefinitions } from './tools/index.js';
 
 initializeMarketplaces();
 
@@ -28,7 +28,7 @@ const server = new Server(
   { capabilities: { tools: {} }, instructions: INSTRUCTIONS }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolDefinitions() }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) =>
   callTool(request.params.name, request.params.arguments)
