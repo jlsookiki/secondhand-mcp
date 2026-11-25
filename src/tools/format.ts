@@ -8,12 +8,13 @@ export function formatSingleResult(result: SearchResult, params: SearchParams, i
   }
 
   if (result.listings.length === 0) {
-    return `No listings found for "${params.query}" in ${params.location}`;
+    return `No listings found for "${params.query}" in ${params.location}` + (result.note ? `\n\n${result.note}` : '');
   }
 
   const lines = [
     `🔍 Found ${result.listings.length} listings for "${params.query}" on ${result.marketplace}`,
     `📍 Location: ${params.location}`,
+    ...(result.note ? [result.note] : []),
     '',
   ];
 
@@ -51,6 +52,7 @@ export function formatMultipleResults(results: SearchResult[], params: SearchPar
       }
     }
 
+    if (result.success && result.note) lines.push(result.note);
     lines.push('');
   }
 

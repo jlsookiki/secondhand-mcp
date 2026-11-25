@@ -102,6 +102,17 @@ describe('initializeMarketplaces', () => {
     expect(registry.listMarketplaceNames()).toEqual(['poshmark', 'depop']);
   });
 
+  it('registers an opt-in marketplace only when MARKETPLACES names it', async () => {
+    const byDefault = await loadRegistry();
+    byDefault.initializeMarketplaces();
+    expect(byDefault.listMarketplaceNames()).not.toContain('sidelineswap');
+
+    const named = await loadRegistry({ marketplaces: 'facebook,sidelineswap' });
+    named.initializeMarketplaces();
+    expect(named.listMarketplaceNames()).toEqual(['facebook', 'sidelineswap']);
+    expect(warnings).toEqual([]);
+  });
+
   it('skips ebay when only one of the two credentials is present', async () => {
     const registry = await loadRegistry({ marketplaces: 'ebay,facebook', ebayCreds: false });
     vi.stubEnv('EBAY_CLIENT_ID', 'id');

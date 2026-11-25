@@ -28,6 +28,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | eBay | Yes (API keys) | Official Browse API |
 | Depop | No | Requires Chrome installed |
 | Poshmark | No | Requires Chrome installed |
+| SidelineSwap | No | Used sporting gear; opt-in via `MARKETPLACES` |
 
 ## Setup
 
@@ -85,7 +86,7 @@ The browser runs invisibly in the background and only launches when you actually
 
 ### Choosing Marketplaces
 
-By default all marketplaces are enabled. To limit which are active, set the `MARKETPLACES` env var (comma-separated):
+By default Facebook, eBay, Depop and Poshmark are enabled. To choose which are active, set the `MARKETPLACES` env var (comma-separated):
 
 ```json
 {
@@ -95,7 +96,9 @@ By default all marketplaces are enabled. To limit which are active, set the `MAR
 }
 ```
 
-Valid values: `facebook`, `ebay`, `depop`, `poshmark`
+Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`
+
+SidelineSwap is only enabled when listed here.
 
 ### eBay API Keys
 
@@ -141,17 +144,17 @@ Search for items across marketplaces.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `all` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
 | `maxPrice` | No | | Maximum price |
 | `minPrice` | No | | Minimum price |
 | `limit` | No | `20` | Max results |
-| `showSold` | No | `false` | Include sold items (Facebook only) |
+| `showSold` | No | `false` | Include sold items (Facebook, SidelineSwap) |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair` |
-| `category` | No | | Product category. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
+| `sort` | No | `relevance` | Sort order (Depop, Poshmark, SidelineSwap): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap: `new`, `used` |
+| `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark only): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
 | `sizes` | No | | Size filter (Depop, Poshmark): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
@@ -175,7 +178,7 @@ Get full details for a specific listing using an ID from search results.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, or `poshmark` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, or `sidelineswap` |
 
 **Data returned per marketplace:**
 
@@ -211,6 +214,8 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 **Poshmark** — Uses a headless browser to search listings with support for condition, size, color, sort, and price filters. Poshmark is not location-based — all items ship nationally.
 
+**SidelineSwap** — Reads the JSON behind SidelineSwap's storefront, so no browser is needed. Supports price, new/used condition, numeric category IDs, sort and offset. Prices are USD asking prices before shipping and tax.
+
 ## Development
 
 ```bash
@@ -224,7 +229,7 @@ npm run build
 
 1. Create a new file in `src/marketplaces/`
 2. Extend `BaseMarketplace` and implement `search()` and optionally `getListingDetails()`
-3. Add the constructor to `allMarketplaces` in `src/marketplaces/index.ts`
+3. Add the constructor to `defaultMarketplaces` in `src/marketplaces/index.ts`, or to `optInMarketplaces` if it should only run when named in `MARKETPLACES`
 
 ## Limitations
 
@@ -232,6 +237,7 @@ npm run build
 - **eBay**: Requires developer API keys (free tier available)
 - **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search)
 - **Poshmark**: Requires Chrome/Chromium installed; no official API so relies on page scraping
+- **SidelineSwap**: Undocumented storefront endpoints, so it may break if SidelineSwap changes them
 - **Rate limiting**: Don't make too many requests too quickly
 
 ## License
