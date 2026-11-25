@@ -79,7 +79,7 @@ export function toolDefinitions(): AnnotatedTool[] {
           },
           condition: {
             type: 'string',
-            description: 'Item condition filter. eBay: new or used only, so put a finer grade like "like new" or "good" in the query. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+            description: 'Item condition filter. eBay: new or used only; a finer grade counts as used. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
           },
           category: {
             type: 'string',
