@@ -155,7 +155,7 @@ Search for items across marketplaces.
 | `showSold` | No | `false` | Include sold items (Facebook, SidelineSwap) |
 | `includeImages` | No | `false` | Include image URLs in output |
 | `sort` | No | `relevance` | Sort order (Poshmark, SidelineSwap, Play It Again Sports; Depop: price sorts only; Geartrade: relevance and price only): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
+| `condition` | No | | Item condition. eBay: `new` or `used` only; a finer grade counts as used. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
 | `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark, Geartrade): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
@@ -172,6 +172,7 @@ Search for items across marketplaces.
 | Condition | — | Yes | — | — |
 | Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail |
 | Seller | Yes | Yes | — | — |
+| Shipping cost | — | Cheapest, with delivered total | — | — |
 
 ### `get_listing_details`
 
@@ -187,13 +188,17 @@ Get full details for a specific listing using an ID from search results.
 
 | Field | Facebook | eBay | Depop | Poshmark |
 |-------|----------|------|-------|----------|
+| Title and price | Yes, with the price before a drop | — | — | — |
+| Condition | Yes | — | — | — |
+| Date listed | Yes | — | — | — |
+| Sold or pending | Yes | — | — | — |
 | Description | Yes | Yes | Yes | Yes |
 | All photos | Yes | Yes | Yes | Yes |
 | Location | City | City, State, Country | — | — |
 | Seller | Name | Username | Username | Username |
 | Brand | — | — | Yes | — |
 | Delivery types | Yes | — | — | — |
-| Shipping | Yes/No | Service codes | Yes/No | Always included |
+| Shipping | Yes/No | Cost per service | Yes/No | Always included |
 
 An eBay listing sold in several options (sizes, colours) also shows what the options differ by, every value they come in, the price range and a few options with their own price and link.
 

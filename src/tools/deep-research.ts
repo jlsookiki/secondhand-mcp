@@ -68,18 +68,26 @@ export async function researchFetch(args: unknown): Promise<ToolResult> {
       JSON.stringify({
         id,
         title:
+          details.title ||
           details.description?.split('\n')[0]?.slice(0, TITLE_MAX_CHARS) ||
           `Listing ${listingId} on ${marketplaceName}`,
         text: details.description || '',
         url: details.url,
         metadata: {
           marketplace: marketplaceName,
+          price: details.price,
+          originalPrice: details.originalPrice,
+          condition: details.condition,
+          listedAt: details.listedAt,
+          availability: details.availability,
           location: details.location,
           seller: details.seller,
           brand: details.brand,
           images: details.images,
           deliveryTypes: details.deliveryTypes,
           isShippingOffered: details.isShippingOffered,
+          shipping: details.shipping,
+          shippingOptions: details.shippingOptions,
           unavailable: details.unavailable,
           optionAxes: details.optionAxes,
           optionValues: details.optionValues,

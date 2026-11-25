@@ -14,10 +14,19 @@ export interface Listing {
   images?: string[];
   seller?: string;
   condition?: string;
+  /** The cheapest way to get it shipped: an amount, free, or calculated at checkout. */
+  shipping?: string;
+  /** Price plus `shipping`, before any sales tax, when shipping is a known amount. */
+  total?: string;
   marketplace: string;
   scrapedAt: string;
   /** Sold in several options that may be priced differently; `price` is one of them. */
   hasOptions?: boolean;
+}
+
+export interface ShippingChoice {
+  service?: string;
+  cost: string;
 }
 
 export const CONDITIONS = ['new', 'like_new', 'excellent', 'good', 'fair', 'used', 'any'] as const;
@@ -67,6 +76,8 @@ export interface ListingOption {
   url: string;
 }
 
+export type ListingAvailability = 'available' | 'pending' | 'sold' | 'unavailable';
+
 /** A part of a listing that a marketplace failed to return this time. */
 export type ListingPart = 'photos' | 'description' | 'options';
 
@@ -80,7 +91,18 @@ export interface ListingDetails {
   brand?: string;
   deliveryTypes?: string[];
   isShippingOffered?: boolean;
+  shipping?: string;
+  shippingOptions?: ShippingChoice[];
   url: string;
+  title?: string;
+  price?: string;
+  priceNumeric?: number;
+  /** What the listing asked before its price was reduced. */
+  originalPrice?: string;
+  condition?: string;
+  /** When the listing went up, as an ISO timestamp. */
+  listedAt?: string;
+  availability?: ListingAvailability;
   unavailable?: ListingPart[];
   /** What a multi-variation listing's options differ by, e.g. ['Size', 'Color']. */
   optionAxes?: string[];

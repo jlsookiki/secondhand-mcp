@@ -15,6 +15,14 @@ export interface BrowseLocation {
   country?: string;
 }
 
+/** One entry of a listing's `shippingOptions`, in a search summary or a full item. */
+export interface BrowseShippingOption {
+  type?: string;
+  shippingCostType?: string;
+  shippingCost?: BrowsePrice;
+  shippingServiceCode?: string;
+}
+
 export interface ItemSummary {
   itemId: string;
   title?: string;
@@ -26,6 +34,7 @@ export interface ItemSummary {
   seller?: { username?: string };
   /** Present on a row that is one option of a multi-variation listing. */
   itemGroupHref?: string;
+  shippingOptions?: BrowseShippingOption[];
 }
 
 export interface SearchResponse {
@@ -51,7 +60,7 @@ export interface Item {
   additionalImages?: BrowseImage[];
   itemLocation?: BrowseLocation;
   seller?: { username?: string };
-  shippingOptions?: Array<{ shippingServiceCode: string }>;
+  shippingOptions?: BrowseShippingOption[];
   itemWebUrl?: string;
   localizedAspects?: BrowseAspect[];
   estimatedAvailabilities?: BrowseAvailability[];

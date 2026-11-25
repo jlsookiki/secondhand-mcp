@@ -14,6 +14,7 @@ import {
   selectOptions,
   varyingAspectNames,
 } from './options.js';
+import { ShippingQuote, cheapestShipping, deliveredTotal, shippedOptions } from './shipping.js';
 import { BrowseLocation, BrowsePrice, Item, ItemGroupResponse, ItemSummary } from './wire.js';
 
 // 50 groups sampled in late September 2026 held a median of 25 options and up
@@ -21,6 +22,10 @@ import { BrowseLocation, BrowsePrice, Item, ItemGroupResponse, ItemSummary } fro
 // the options wanted brings back up to the larger cap.
 const SHOWN_OPTIONS = 10;
 const MAX_OPTIONS = 30;
+
+const SHIPPING_FREE = 'Free';
+const SHIPPING_CALCULATED = 'Calculated at checkout';
+const CENT_DECIMALS = 2;
 
 interface PriceText {
   text: string;
@@ -40,6 +45,7 @@ export function summaryListing(item: ItemSummary): Listing {
 
   // Only the primary image for search results; the full set comes with details.
   const image = item.image?.imageUrl ? toFullResImageUrl(item.image.imageUrl) : undefined;
+  const shipping = cheapestShipping(item.shippingOptions);
 
   return {
     id: item.itemId,
@@ -52,6 +58,8 @@ export function summaryListing(item: ItemSummary): Listing {
     url: item.itemWebUrl || itemPageUrl(item.itemId),
     images: image ? [image] : undefined,
     seller: item.seller?.username,
+    shipping: shipping && quoteText(shipping),
+    total: totalText(price?.numeric, item.price?.currency, shipping),
     marketplace: 'ebay',
     scrapedAt: new Date().toISOString(),
     ...(item.itemGroupHref && { hasOptions: true }),
@@ -63,6 +71,8 @@ export function itemDetails(item: Item): ListingDetails {
   const images = [item.image, ...additional].flatMap((image) =>
     image?.imageUrl ? [toFullResImageUrl(image.imageUrl)] : []
   );
+  const shipped = shippedOptions(item.shippingOptions);
+  const cheapest = cheapestShipping(item.shippingOptions);
 
   return {
     id: item.itemId,
@@ -70,8 +80,10 @@ export function itemDetails(item: Item): ListingDetails {
     images,
     location: placeText(item.itemLocation, ['city', 'stateOrProvince', 'country']),
     seller: item.seller?.username ?? undefined,
-    deliveryTypes: item.shippingOptions?.map((s) => s.shippingServiceCode) ?? undefined,
-    isShippingOffered: Array.isArray(item.shippingOptions) && item.shippingOptions.length > 0,
+    deliveryTypes: item.shippingOptions?.flatMap((s) => (s.shippingServiceCode ? [s.shippingServiceCode] : [])) ?? undefined,
+    isShippingOffered: shipped.length > 0,
+    shipping: cheapest && quoteText(cheapest),
+    shippingOptions: shipped.length > 0 ? shipped.map(({ service, quote }) => ({ service, cost: quoteText(quote) })) : undefined,
     url: item.itemWebUrl ?? itemPageUrl(item.itemId),
   };
 }
@@ -134,4 +146,25 @@ function itemDescription(item: Item): string | undefined {
 
 function placeText(location: BrowseLocation | undefined, parts: Array<keyof BrowseLocation>): string | undefined {
   return parts.map((part) => location?.[part]).filter(Boolean).join(', ') || undefined;
+}
+
+export function quoteText(quote: ShippingQuote): string {
+  if (quote.kind === 'calculated') return SHIPPING_CALCULATED;
+  if (quote.amount === 0) return SHIPPING_FREE;
+  return amountText(quote.cost);
+}
+
+function totalText(
+  amount: number | undefined,
+  currency: string | undefined,
+  shipping: ShippingQuote | undefined
+): string | undefined {
+  if (amount === undefined) return undefined;
+  const total = deliveredTotal({ amount, currency }, shipping);
+  if (total === undefined) return undefined;
+  return amountText({ value: total.toFixed(CENT_DECIMALS), currency });
+}
+
+function amountText(price: BrowsePrice): string {
+  return browsePrice(price)!.text;
 }

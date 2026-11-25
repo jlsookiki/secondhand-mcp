@@ -547,7 +547,7 @@ describe('get_listing_details', () => {
     h.impl.facebook = { details: () => details({ unavailable: ['photos', 'description'] }) };
     const text = textOf(await call('get_listing_details', { listingId: '1' }));
     expect(text).toContain("Photos couldn't be loaded right now");
-    expect(text).toContain("The description, location and seller couldn't be loaded right now");
+    expect(text).toContain("The price, condition, description, location and seller couldn't be loaded right now");
   });
 
   it("passes the shopper's option choice to the marketplace", async () => {

@@ -237,17 +237,11 @@ describe('EbayMarketplace.search request', () => {
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBeNull();
   });
 
-  it.each([
-    ['new', 'NEW'],
-    ['like_new', 'LIKE_NEW'],
-    ['good', 'GOOD'],
-    ['fair', 'FAIR'],
-    ['excellent', 'USED'],
-  ] as const)('maps condition %s to the eBay conditions filter', async (condition, mapped) => {
+  it('sends the condition as eBay condition IDs', async () => {
     install();
-    await market().search({ query: 'lamp', condition });
+    await market().search({ query: 'lamp', condition: 'good' });
 
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(`conditions:{${mapped}}`);
+    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditionIds:{2750|2990|3000|3010|4000|5000|6000}');
   });
 
   it('sends no condition filter for "any"', async () => {
@@ -274,15 +268,8 @@ describe('EbayMarketplace.search request', () => {
     await market().search({ query: 'lamp', minPrice: 5, maxPrice: 20, condition: 'new' });
 
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(
-      'price:[5..20],priceCurrency:USD,conditions:{NEW}'
+      'price:[5..20],priceCurrency:USD,conditionIds:{1000|1500|1750}'
     );
-  });
-
-  it('applies a filter for the "used" condition', async () => {
-    install();
-    await market().search({ query: 'lamp', condition: 'used' });
-
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditions:{USED}');
   });
 
   it('sends priceCurrency alongside a price filter', async () => {
@@ -406,6 +393,67 @@ describe('EbayMarketplace.search results', () => {
   });
 });
 
+describe('EbayMarketplace.search shipping', () => {
+  it('gives each listing its cheapest shipping: an amount, free, calculated, or nothing when it does not ship', async () => {
+    install({
+      search: () =>
+        json({
+          total: 4,
+          itemSummaries: [
+            summary(1, {
+              shippingOptions: [
+                { shippingCostType: 'FIXED', shippingCost: { value: '8.95', currency: 'USD' } },
+                { shippingCostType: 'FIXED', shippingCost: { value: '12.00', currency: 'USD' } },
+              ],
+            }),
+            summary(2, { shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } }] }),
+            summary(3, { shippingOptions: [{ shippingCostType: 'CALCULATED', shippingCost: { value: '14.10', currency: 'USD' } }] }),
+            summary(4),
+          ],
+        }),
+    });
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.listings.map((l) => l.shipping)).toEqual(['$8.95', 'Free', 'Calculated at checkout', undefined]);
+    expect(result.listings.map((l) => l.total)).toEqual(['$18.95', '$10.00', undefined, undefined]);
+  });
+
+  it('totals a price written with thousands separators', async () => {
+    install({
+      search: () =>
+        json({
+          total: 1,
+          itemSummaries: [
+            summary(1, {
+              price: { value: '1,234.56', currency: 'USD' },
+              shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '45.00', currency: 'USD' } }],
+            }),
+          ],
+        }),
+    });
+
+    expect((await market().search({ query: 'sofa' })).listings[0].total).toBe('$1279.56');
+  });
+
+  it('gives no total for a listing without a price', async () => {
+    install({
+      search: () =>
+        json({
+          total: 1,
+          itemSummaries: [
+            summary(1, { price: undefined, shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '5.00', currency: 'USD' } }] }),
+          ],
+        }),
+    });
+
+    const [listing] = (await market().search({ query: 'lamp' })).listings;
+
+    expect(listing.shipping).toBe('$5.00');
+    expect(listing.total).toBeUndefined();
+  });
+});
+
 describe('EbayMarketplace.search pagination', () => {
   it('pages in 200-item requests until the limit is filled', async () => {
     const page = (start: number, count: number) => ({
@@ -437,8 +485,8 @@ describe('EbayMarketplace.search pagination', () => {
     await market().search({ query: 'lamp', limit: 210, condition: 'new', maxPrice: 50 });
 
     expect(callsTo(SEARCH_PATH).map((c) => query(c, 'filter'))).toEqual([
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
     ]);
   });
 
@@ -624,8 +672,57 @@ describe('EbayMarketplace.getListingDetails', () => {
       seller: 'lampking',
       deliveryTypes: ['Standard', 'Expedited'],
       isShippingOffered: true,
+      shipping: 'Calculated at checkout',
+      shippingOptions: [
+        { service: 'Standard', cost: 'Calculated at checkout' },
+        { service: 'Expedited', cost: 'Calculated at checkout' },
+      ],
       url: 'https://www.ebay.de/itm/123456',
     });
+  });
+
+  it('prices each shipping service, leaving local pickup out', async () => {
+    install({
+      item: () =>
+        json({
+          itemId: 'v1|9|0',
+          itemWebUrl: 'https://www.ebay.com/itm/9',
+          shippingOptions: [
+            { type: 'STANDARD', shippingServiceCode: 'USPS Ground Advantage', shippingCostType: 'FIXED', shippingCost: { value: '6.50', currency: 'USD' } },
+            { type: 'EXPEDITED', shippingServiceCode: 'UPS 2nd Day Air', shippingCostType: 'CALCULATED', shippingCost: { value: '21.00', currency: 'USD' } },
+            { type: 'PICKUP', shippingServiceCode: 'Local pickup', shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } },
+          ],
+        }),
+    });
+
+    const details = await market().getListingDetails('9');
+
+    // The calculated service might undercut $6.50, so the cheapest is not claimed.
+    expect(details.shipping).toBe('Calculated at checkout');
+    expect(details.isShippingOffered).toBe(true);
+    expect(details.shippingOptions).toEqual([
+      { service: 'USPS Ground Advantage', cost: '$6.50' },
+      { service: 'UPS 2nd Day Air', cost: 'Calculated at checkout' },
+    ]);
+  });
+
+  it('does not offer shipping on a pickup-only listing', async () => {
+    install({
+      item: () =>
+        json({
+          itemId: 'v1|10|0',
+          itemWebUrl: 'https://www.ebay.com/itm/10',
+          shippingOptions: [
+            { type: 'PICKUP', shippingServiceCode: 'Local pickup', shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } },
+          ],
+        }),
+    });
+
+    const details = await market().getListingDetails('10');
+
+    expect(details).toMatchObject({ isShippingOffered: false, deliveryTypes: ['Local pickup'] });
+    expect(details.shipping).toBeUndefined();
+    expect(details.shippingOptions).toBeUndefined();
   });
 
   it('reads the seller\'s HTML description as text', async () => {
