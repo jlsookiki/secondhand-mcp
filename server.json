@@ -38,7 +38,7 @@
         },
         {
           "name": "MARKETPLACES",
-          "description": "Comma-separated marketplaces to enable, e.g. facebook,ebay,sidelineswap (default: facebook, ebay, depop, poshmark). SidelineSwap, Play It Again Sports and Geartrade run only when listed",
+          "description": "Comma-separated list of the only marketplaces to enable, e.g. facebook,ebay,sidelineswap. When unset, facebook, ebay, depop and poshmark run. SidelineSwap, Play It Again Sports and Geartrade run only when listed",
           "isRequired": false,
           "isSecret": false
         }
