@@ -105,11 +105,13 @@ describe('initializeMarketplaces', () => {
   it('registers an opt-in marketplace only when MARKETPLACES names it', async () => {
     const byDefault = await loadRegistry();
     byDefault.initializeMarketplaces();
+    expect(byDefault.listMarketplaceNames()).not.toContain('sidelineswap');
+    expect(byDefault.listMarketplaceNames()).not.toContain('playitagain');
     expect(byDefault.listMarketplaceNames()).not.toContain('geartrade');
 
-    const named = await loadRegistry({ marketplaces: 'facebook,geartrade' });
+    const named = await loadRegistry({ marketplaces: 'facebook,sidelineswap,playitagain,geartrade' });
     named.initializeMarketplaces();
-    expect(named.listMarketplaceNames()).toEqual(['facebook', 'geartrade']);
+    expect(named.listMarketplaceNames()).toEqual(['facebook', 'sidelineswap', 'playitagain', 'geartrade']);
     expect(warnings).toEqual([]);
   });
 

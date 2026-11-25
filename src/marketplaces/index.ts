@@ -7,6 +7,8 @@ import { FacebookMarketplace } from './facebook/index.js';
 import { EbayMarketplace } from './ebay/index.js';
 import { DepopMarketplace } from './depop.js';
 import { PoshmarkMarketplace } from './poshmark.js';
+import { SidelineSwapMarketplace } from './sidelineswap/index.js';
+import { PlayItAgainMarketplace } from './playitagain/index.js';
 import { GeartradeMarketplace } from './geartrade/index.js';
 import { findChrome } from '../browser.js';
 
@@ -15,6 +17,8 @@ export { FacebookMarketplace } from './facebook/index.js';
 export { EbayMarketplace, resizeEbayImageUrl } from './ebay/index.js';
 export { DepopMarketplace } from './depop.js';
 export { PoshmarkMarketplace } from './poshmark.js';
+export { SidelineSwapMarketplace } from './sidelineswap/index.js';
+export { PlayItAgainMarketplace } from './playitagain/index.js';
 export { GeartradeMarketplace } from './geartrade/index.js';
 
 // Registry of all available marketplaces
@@ -29,6 +33,8 @@ const defaultMarketplaces: Record<string, () => Marketplace> = {
 
 // Niche sources stay off unless named in MARKETPLACES, so they don't slow down every "all" search.
 const optInMarketplaces: Record<string, () => Marketplace> = {
+  sidelineswap: () => new SidelineSwapMarketplace(),
+  playitagain: () => new PlayItAgainMarketplace(),
   geartrade: () => new GeartradeMarketplace(),
 };
 

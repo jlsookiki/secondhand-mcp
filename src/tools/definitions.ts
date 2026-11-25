@@ -18,7 +18,7 @@ type AnnotatedTool = Tool & {
 export const tools: AnnotatedTool[] = [
   {
     name: 'search_marketplace',
-    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; Geartrade (used outdoor gear) needs nothing but runs only when MARKETPLACES names it. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
+    description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; SidelineSwap (used sporting gear), Play It Again Sports (sporting goods store inventory) and Geartrade (used outdoor gear) are opt-in and run only when named in MARKETPLACES. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
     annotations: { title: 'Search Marketplace', ...READ_ONLY },
     inputSchema: {
       type: 'object',
@@ -44,11 +44,11 @@ export const tools: AnnotatedTool[] = [
         },
         maxPrice: {
           type: 'number',
-          description: 'Maximum price filter (optional)'
+          description: 'Maximum price filter (optional). Play It Again Sports applies it to US stores only.'
         },
         minPrice: {
           type: 'number',
-          description: 'Minimum price filter (optional)'
+          description: 'Minimum price filter (optional). Play It Again Sports applies it to US stores only.'
         },
         limit: {
           type: 'number',
@@ -57,7 +57,7 @@ export const tools: AnnotatedTool[] = [
         },
         offset: {
           type: 'number',
-          description: 'Starting result offset for pagination (default: 0). eBay and Geartrade; other marketplaces ignore it.',
+          description: 'Starting result offset for pagination (default: 0). eBay, SidelineSwap, Play It Again Sports and Geartrade; other marketplaces ignore it.',
           default: 0
         },
         showSold: {
@@ -72,16 +72,16 @@ export const tools: AnnotatedTool[] = [
         },
         sort: {
           type: 'string',
-          description: 'Sort order (Depop, Poshmark; Geartrade: relevance and price only). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
+          description: 'Sort order (Depop, Poshmark, SidelineSwap, Play It Again Sports; Geartrade: relevance and price only). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
           default: 'relevance'
         },
         condition: {
           type: 'string',
-          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
         },
         category: {
           type: 'string',
-          description: 'Product category. Geartrade: exact product type, e.g. Alpine Skis w/ Bindings. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
+          description: 'Product category. SidelineSwap: numeric category ID, e.g. 110030 for goalie masks. Geartrade: exact product type, e.g. Alpine Skis w/ Bindings. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
         },
         brand: {
           type: 'string',
