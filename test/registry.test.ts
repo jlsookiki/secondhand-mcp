@@ -134,12 +134,14 @@ describe('initializeMarketplaces', () => {
     expect((ebay as InstanceType<Registry['EbayMarketplace']>).marketplaceId).toBe('EBAY_US');
   });
 
-  it('skips the browser-backed marketplaces when Chrome is not found', async () => {
+  it('skips only Depop when Chrome is not found, since Poshmark needs no browser', async () => {
     const registry = await loadRegistry({ chrome: null });
     registry.initializeMarketplaces();
 
-    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay']);
-    expect(warnings.filter((w) => w.includes('Chrome/Chromium not found'))).toHaveLength(2);
+    expect(registry.listMarketplaceNames()).toEqual(['facebook', 'ebay', 'poshmark']);
+    expect(warnings.filter((w) => w.includes('Chrome/Chromium not found'))).toEqual([
+      'Depop marketplace enabled but Chrome/Chromium not found — skipping',
+    ]);
   });
 
   it('skips an unknown name and still registers the rest', async () => {

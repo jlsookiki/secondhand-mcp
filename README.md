@@ -27,7 +27,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | Facebook Marketplace | No | Location-based search |
 | eBay | Yes (API keys) | Official Browse API |
 | Depop | No | Requires Chrome installed |
-| Poshmark | No | Requires Chrome installed |
+| Poshmark | No | No browser needed |
 | SidelineSwap | No | Used sporting gear; opt-in via `MARKETPLACES` |
 | Play It Again Sports | No | New and used sporting goods from store inventory; opt-in via `MARKETPLACES` |
 | Geartrade | No | Used outdoor and ski gear; opt-in via `MARKETPLACES` |
@@ -74,15 +74,15 @@ Add to `~/.claude/.mcp.json`:
 }
 ```
 
-eBay, Depop, and Poshmark are all optional — if eBay API keys are missing or Chrome isn't installed, those marketplaces are automatically disabled and the rest still work.
+eBay and Depop are optional — if eBay API keys are missing or Chrome isn't installed, that marketplace is automatically disabled and the rest still work.
 
-### Depop & Poshmark / Chrome Requirement
+### Depop / Chrome Requirement
 
-Depop and Poshmark require a headless browser. If **Google Chrome or Chromium** is installed on your system, both are automatically enabled — no config needed. If Chrome isn't found, they are silently skipped.
+Depop requires a headless browser. If **Google Chrome or Chromium** is installed on your system, it is automatically enabled — no config needed. If Chrome isn't found, it is silently skipped.
 
-On macOS, the first time you search Depop or Poshmark, you may see a system prompt asking to allow Node.js to control Chrome. This is expected — puppeteer needs to launch Chrome in headless mode. Allow it once and it won't ask again.
+On macOS, the first time you search Depop, you may see a system prompt asking to allow Node.js to control Chrome. This is expected — puppeteer needs to launch Chrome in headless mode. Allow it once and it won't ask again.
 
-The browser runs invisibly in the background and only launches when you actually search Depop or Poshmark.
+The browser runs invisibly in the background and only launches when you actually search Depop.
 
 ## Configuration
 
@@ -158,7 +158,7 @@ Search for items across marketplaces.
 | `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
 | `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark, Geartrade): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
-| `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
+| `department` | No | | Department (Poshmark only, added to the search words): `Women`, `Men`, `Kids` |
 | `sizes` | No | | Size filter (Poshmark, Geartrade): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
 | `colors` | No | | Color filter (Poshmark only): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
 
@@ -169,9 +169,9 @@ Search for items across marketplaces.
 | Title | Yes | Yes | Yes | Yes |
 | Price | Yes | Yes | Yes | Yes |
 | Location | City | City, State | — | — |
-| Condition | — | Yes | — | — |
+| Condition | — | Yes | — | Yes |
 | Photo count | 1 thumbnail | 1 thumbnail | 1 thumbnail | 1 thumbnail |
-| Seller | Yes | Yes | — | — |
+| Seller | Yes | Yes | — | Yes |
 
 ### `get_listing_details`
 
@@ -215,7 +215,7 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 **Depop** — Uses a headless browser to search listings, with price bounds and price sorts applied to the results. The browser instance is shared across requests.
 
-**Poshmark** — Uses a headless browser to search listings with support for condition, size, color, sort, and price filters. Poshmark is not location-based — all items ship nationally.
+**Poshmark** — Reads the JSON behind Poshmark's web app, so no browser is needed. Supports condition, brand, category, size, color, sort and price; a department is added to the search words. Poshmark is not location-based — all items ship nationally.
 
 **SidelineSwap** — Reads the JSON behind SidelineSwap's storefront, so no browser is needed. Supports price, new/used condition, numeric category IDs, sort and offset. Prices are USD asking prices before shipping and tax.
 
@@ -243,7 +243,7 @@ npm run build
 - **Facebook**: May break if Facebook changes their frontend
 - **eBay**: Requires developer API keys (free tier available)
 - **Depop**: Requires Chrome/Chromium installed; slower than Facebook/eBay (~5s per search)
-- **Poshmark**: Requires Chrome/Chromium installed; no official API so relies on page scraping
+- **Poshmark**: Undocumented web app endpoint, so it may break if Poshmark changes it
 - **SidelineSwap**: Undocumented storefront endpoints, so it may break if SidelineSwap changes them
 - **Play It Again Sports**: Reads data embedded in the storefront's pages, so it may break if the site changes them; searches at most ten pages of 12 products
 - **Geartrade**: Reads storefront pages, so it may break if Geartrade changes its theme

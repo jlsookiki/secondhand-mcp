@@ -60,10 +60,6 @@ export function initializeMarketplaces(): void {
       console.error('Depop marketplace enabled but Chrome/Chromium not found — skipping');
       continue;
     }
-    if (name === 'poshmark' && !findChrome()) {
-      console.error('Poshmark marketplace enabled but Chrome/Chromium not found — skipping');
-      continue;
-    }
     registerMarketplace(factory());
   }
 }
