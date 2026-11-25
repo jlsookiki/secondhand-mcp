@@ -106,10 +106,11 @@ describe('initializeMarketplaces', () => {
     const byDefault = await loadRegistry();
     byDefault.initializeMarketplaces();
     expect(byDefault.listMarketplaceNames()).not.toContain('sidelineswap');
+    expect(byDefault.listMarketplaceNames()).not.toContain('playitagain');
 
-    const named = await loadRegistry({ marketplaces: 'facebook,sidelineswap' });
+    const named = await loadRegistry({ marketplaces: 'facebook,sidelineswap,playitagain' });
     named.initializeMarketplaces();
-    expect(named.listMarketplaceNames()).toEqual(['facebook', 'sidelineswap']);
+    expect(named.listMarketplaceNames()).toEqual(['facebook', 'sidelineswap', 'playitagain']);
     expect(warnings).toEqual([]);
   });
 
