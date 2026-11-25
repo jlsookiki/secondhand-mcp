@@ -353,14 +353,19 @@ describe('search requests and parsing', () => {
     expect(result.totalFound).toBe(3);
   });
 
-  it('passes the price bounds through, with a sentinel for an open upper bound', async () => {
+  it('sends the price bounds in cents, with a sentinel for an open upper bound', async () => {
     const { calls } = stubFetch(() => json(searchBody([])));
 
     await search({ minPrice: 25 });
+    await search({ minPrice: 19.99, maxPrice: 400 });
 
     const browse = calls[0].variables.params.browse_request_params;
-    expect(browse.filter_price_lower_bound).toBe(25);
+    expect(browse.filter_price_lower_bound).toBe(2500);
     expect(browse.filter_price_upper_bound).toBe(214748364700);
+    expect(calls.at(-1)!.variables.params.browse_request_params).toMatchObject({
+      filter_price_lower_bound: 1999,
+      filter_price_upper_bound: 40000,
+    });
     expect(calls[0].variables.params.bqf.query).toBe('bike');
   });
 
@@ -426,7 +431,7 @@ describe('gated API version and the search page fallback', () => {
     const pageCall = calls.find((c) => c.url.includes('/marketplace/'))!;
     expect(pageCall.url).toContain(`/marketplace/${CITY_PAGE_ID}/search?`);
     expect(pageCall.url).toContain('query=bike');
-    expect(pageCall.url).toContain('radius=25');
+    expect(pageCall.url).toContain('radius=40');
   });
 
   it('reads the search page when the API returns story stubs without listings', async () => {
@@ -647,7 +652,7 @@ describe('gated API version and the search page fallback', () => {
     expect((await facebook.search({ ...BASE, query: 'trek' })).listings.map((l) => l.id)).toEqual(['p1', 'p2']);
   });
 
-  it('carries the radius onto the search page url', async () => {
+  it('carries the radius onto the search page url in kilometres', async () => {
     const { calls } = stubFetch((req) => {
       if (req.url.includes('/marketplace/')) return html(pageHtml(['p1']));
       if (req.docId === LOCATION_DOC_ID) return json(cityPageBody);
@@ -656,7 +661,7 @@ describe('gated API version and the search page fallback', () => {
 
     await search({ radius: 60 });
 
-    expect(calls.find((c) => c.url.includes('/marketplace/'))!.url).toContain('radius=60');
+    expect(calls.find((c) => c.url.includes('/marketplace/'))!.url).toContain('radius=97');
   });
 });
 
