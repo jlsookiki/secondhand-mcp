@@ -514,6 +514,13 @@ describe('get_listing_details', () => {
     expect(text).toContain("The description, location and seller couldn't be loaded right now");
   });
 
+  it('shows the brand separately from the seller', async () => {
+    h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
+    const text = textOf(await call('get_listing_details', { listingId: '1', marketplace: 'depop' }));
+    expect(text).toContain('👤 Seller: mesmeriser');
+    expect(text).toContain("🏷️ Brand: Levi's");
+  });
+
   it('renders the listing body without image fetching by default', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -822,6 +829,12 @@ describe('fetch (deep research)', () => {
     h.impl.facebook = { details: () => details({ url: 'https://fb/99', unavailable: ['photos'] }) };
     const body = jsonOf(await call('fetch', { id: 'facebook:99' }));
     expect(body.metadata.unavailable).toEqual(['photos']);
+  });
+
+  it('carries the brand and seller into the metadata', async () => {
+    h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
+    const body = jsonOf(await call('fetch', { id: 'depop:mesmeriser-levis-501-7877' }));
+    expect(body.metadata).toMatchObject({ seller: 'mesmeriser', brand: "Levi's" });
   });
 
   it('returns the deep-research document shape', async () => {

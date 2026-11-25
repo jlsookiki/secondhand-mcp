@@ -13,7 +13,7 @@ vi.mock('../src/browser.js', () => ({
 }));
 
 import { newPage, rotateBrowser, withBrowserLock } from '../src/browser.js';
-import { DepopMarketplace } from '../src/marketplaces/depop.js';
+import { DepopMarketplace, cardPrice, depopSeller } from '../src/marketplaces/depop.js';
 import { PoshmarkMarketplace } from '../src/marketplaces/poshmark.js';
 
 /** A node answers querySelector only for the selector strings it was built with. */
@@ -738,12 +738,48 @@ describe('Depop listing extraction', () => {
   });
 });
 
+describe('cardPrice', () => {
+  it.each([
+    ['Levi\'s 30" $63.70 +$10.00 shipping', '$63.70'],
+    ['Levi\'s 34" $68.95 $38.24 +$10.00 shipping', '$38.24'],
+    ['Levi\'s 28" £26.95 £13.82', '£13.82'],
+    ['Levi\'s 28" $17.50', '$17.50'],
+    ['Levi\'s £26.95 +£3.50', '£26.95'],
+    ['Free shipping', undefined],
+  ])('reads %s as %s', (text, price) => {
+    expect(cardPrice(text)).toBe(price);
+  });
+});
+
+describe('depopSeller', () => {
+  it('prefers the description, then the photo caption, then the slug', () => {
+    expect(depopSeller('Jeans - Sold by @ppthriftss', 'item listed by other', 'prthriftss-jeans')).toBe('ppthriftss');
+    expect(depopSeller('Jeans', 'item listed by ppthriftss image 2', 'prthriftss-jeans')).toBe('ppthriftss');
+    expect(depopSeller(undefined, undefined, 'prthriftss-jeans')).toBe('prthriftss');
+  });
+});
+
+describe('Depop card prices with shipping', () => {
+  it('reports the item price, not the shipping cost, and filters on it', async () => {
+    const { result } = await depopSearch(
+      { query: 'x', maxPrice: 50 },
+      {
+        roots: [
+          depopTile('/products/mesmeriser-levis-501-7877/', { text: 'Levi\'s 30" $63.70 +$10.00 shipping' }),
+          depopTile('/products/looseunitvntg-carhartt-cf94/', { text: 'Carhartt $68.95 $38.24 +$10.00 shipping' }),
+        ],
+      },
+    );
+    expect(result.listings.map((l) => [l.id, l.price])).toEqual([['looseunitvntg-carhartt-cf94', '$38.24']]);
+  });
+});
+
 describe('Depop result filtering and sorting', () => {
   const item = (slug: string, price?: string) => ({
     slug,
     label: '',
     img: '',
-    prices: price ? [price] : [],
+    text: price ?? '',
   });
 
   it('drops listings outside the price bounds', async () => {
@@ -859,9 +895,10 @@ describe('Depop listing details', () => {
     expect(details.isShippingOffered).toBe(true);
   });
 
-  it('reports the JSON-LD brand as the seller', async () => {
+  it('reports the JSON-LD brand as the brand, not the seller', async () => {
     const page = fakePage({
       roots: [
+        el('meta[name="description"]', { content: 'Nike jacket - Sold by @jacketqueen' }),
         el(
           'script[type="application/ld+json"]',
           {},
@@ -871,10 +908,17 @@ describe('Depop listing details', () => {
     });
     use(page);
     const details = await new DepopMarketplace().getListingDetails(slug);
-    expect(details.seller).toBe('Nike');
+    expect(details.seller).toBe('jacketqueen');
+    expect(details.brand).toBe('Nike');
   });
 
-  it('falls back to the slug username when there is no JSON-LD brand', async () => {
+  it('reads the seller from the photo caption when the description has no seller', async () => {
+    use(fakePage({ roots: [el('img[alt^="item listed by "]', { alt: 'item listed by jacketqueen image 2' })] }));
+    const details = await new DepopMarketplace().getListingDetails(slug);
+    expect(details.seller).toBe('jacketqueen');
+  });
+
+  it('falls back to the slug username when neither the description nor a photo caption names the seller', async () => {
     use(fakePage({ roots: [el('meta[name="description"]', { content: 'blurb' })] }));
     const details = await new DepopMarketplace().getListingDetails(slug);
     expect(details.seller).toBe('thriftstore');

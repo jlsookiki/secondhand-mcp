@@ -72,16 +72,16 @@ export const tools: AnnotatedTool[] = [
         },
         sort: {
           type: 'string',
-          description: 'Sort order (Depop, Poshmark, SidelineSwap, Play It Again Sports; Geartrade: relevance and price only). Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
+          description: 'Sort order (Poshmark, SidelineSwap, Play It Again Sports). Depop: price sorts only. Geartrade: relevance and price only. Options: relevance, newest, most_popular, price_low_to_high, price_high_to_low',
           default: 'relevance'
         },
         condition: {
           type: 'string',
-          description: 'Item condition filter. eBay: new, like_new, good, fair. Depop: new, like_new, excellent, good, fair, used. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+          description: 'Item condition filter. eBay: new, like_new, good, fair. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
         },
         category: {
           type: 'string',
-          description: 'Product category. SidelineSwap: numeric category ID, e.g. 110030 for goalie masks. Geartrade: exact product type, e.g. Alpine Skis w/ Bindings. Depop: tops, bottoms, dresses, coats-jackets, footwear, accessories, bags, jewellery, activewear, swimwear. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
+          description: 'Product category. SidelineSwap: numeric category ID, e.g. 110030 for goalie masks. Geartrade: exact product type, e.g. Alpine Skis w/ Bindings. Poshmark: use underscore-separated names like Jackets_&_Coats, Dresses, Shoes, Accessories, etc.',
         },
         brand: {
           type: 'string',
@@ -94,12 +94,12 @@ export const tools: AnnotatedTool[] = [
         sizes: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter by sizes (Depop, Poshmark, Geartrade). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
+          description: 'Filter by sizes (Poshmark, Geartrade). Example: ["S", "M", "L"] or ["US 9", "US 10"]',
         },
         colors: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter by colors (Depop, Poshmark). Options: black, white, red, blue, green, yellow, orange, pink, purple, brown, grey, cream, multi, silver, gold',
+          description: 'Filter by colors (Poshmark only). Options: black, white, red, blue, green, yellow, orange, pink, purple, brown, grey, cream, multi, silver, gold',
         }
       },
       required: ['query']

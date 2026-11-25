@@ -76,6 +76,7 @@ export async function researchFetch(args: unknown): Promise<ToolResult> {
           marketplace: marketplaceName,
           location: details.location,
           seller: details.seller,
+          brand: details.brand,
           images: details.images,
           deliveryTypes: details.deliveryTypes,
           isShippingOffered: details.isShippingOffered,

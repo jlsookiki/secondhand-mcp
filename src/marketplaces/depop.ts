@@ -22,6 +22,30 @@ const NAV_TIMEOUT = 20000;
 const SEARCH_PAGE = 'https://www.depop.com/search/';
 const PRODUCT_URL = 'https://www.depop.com/products/';
 
+const MONEY = /[£$€]\s?\d[\d.,]*/g;
+const SHIPPING_COST = /\+\s*[£$€]\s?\d[\d.,]*(?:\s*shipping)?/gi;
+const SOLD_BY = /Sold by @(\S+)\s*$/;
+const LISTED_BY = /^item listed by (\S+)/;
+
+/** A card reads "$68.95 $38.24 +$10.00 shipping" when discounted: the price now is the last amount once shipping is gone. */
+export function cardPrice(cardText: string): string | undefined {
+  const amounts = cardText.replace(SHIPPING_COST, ' ').match(MONEY) ?? [];
+  return amounts.at(-1)?.replace(/\s/g, '');
+}
+
+/** The slug's first segment is only a last resort: Depop sometimes alters it ("prthriftss-…" is sold by @ppthriftss). */
+export function depopSeller(metaDescription: string | undefined, imageAlt: string | undefined, slug: string): string {
+  return metaDescription?.match(SOLD_BY)?.[1] ?? imageAlt?.match(LISTED_BY)?.[1] ?? slug.split('-')[0];
+}
+
+interface DetailsPage {
+  description?: string;
+  images: string[];
+  brand?: string;
+  metaDescription?: string;
+  imageAlt?: string;
+}
+
 export class DepopMarketplace extends BaseMarketplace {
   readonly name = 'depop';
   readonly displayName = 'Depop';
@@ -73,7 +97,7 @@ export class DepopMarketplace extends BaseMarketplace {
         // SSR content is in the initial HTML, but wait briefly in case of hydration.
         await page.waitForSelector('a[href*="/products/"]', { timeout: 8000 }).catch(() => {});
 
-        const raw: Array<{ slug: string; label: string; img: string; prices: string[] }> =
+        const raw: Array<{ slug: string; label: string; img: string; text: string }> =
           await page.evaluate(() => {
             const seen = new Set<string>();
             const out: any[] = [];
@@ -86,21 +110,19 @@ export class DepopMarketplace extends BaseMarketplace {
               seen.add(slug);
               const card = (a as HTMLElement).closest('li') || a.parentElement;
               const img = a.querySelector('img') || (card && card.querySelector('img'));
-              const txt = ((card && (card as HTMLElement).innerText) || '').replace(/\s+/g, ' ').trim();
-              const prices = txt.match(/[£$€]\s?\d[\d.,]*/g) || [];
+              const text = ((card && (card as HTMLElement).innerText) || '').replace(/\s+/g, ' ').trim();
               out.push({
                 slug,
                 label: a.getAttribute('aria-label') || (img && img.getAttribute('alt')) || '',
                 img: (img && (img.getAttribute('src') || (img.getAttribute('srcset') || '').split(' ')[0])) || '',
-                prices,
+                text,
               });
             });
             return out;
           });
 
         let listings: Listing[] = raw.map((r) => {
-          // Current price is the last money match ("was £X now £Y" → Y).
-          const priceStr = r.prices.length ? r.prices[r.prices.length - 1].replace(/\s/g, '') : 'Price not listed';
+          const priceStr = cardPrice(r.text) ?? 'Price not listed';
           const parsed = this.parsePrice(priceStr);
           return {
             id: r.slug,
@@ -147,7 +169,7 @@ export class DepopMarketplace extends BaseMarketplace {
       try {
         page = await this.navigateWithRetry(`${PRODUCT_URL}${slug}/`);
 
-        const data: { description?: string; images: string[]; seller?: string } = await page.evaluate(() => {
+        const data: DetailsPage = await page.evaluate(() => {
           const meta = (sel: string) =>
             (document.querySelector(sel) as HTMLMetaElement | null)?.content || undefined;
 
@@ -164,29 +186,32 @@ export class DepopMarketplace extends BaseMarketplace {
             });
           }
 
-          let description = meta('meta[name="description"]') || meta('meta[property="og:description"]');
+          const metaDescription = meta('meta[name="description"]') || meta('meta[property="og:description"]');
+          const imageAlt = document.querySelector('img[alt^="item listed by "]')?.getAttribute('alt') || undefined;
+          let description = metaDescription;
 
           // JSON-LD Product schema, if present, is the richest source.
-          let seller: string | undefined;
+          let brand: string | undefined;
           document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
             try {
               const j = JSON.parse(s.textContent || '');
               const node = Array.isArray(j) ? j.find((x) => x['@type'] === 'Product') : j;
               if (node && node['@type'] === 'Product') {
                 if (node.description) description = node.description;
-                if (node.brand?.name) seller = node.brand.name;
+                if (node.brand?.name) brand = node.brand.name;
               }
             } catch { /* ignore */ }
           });
 
-          return { description, images, seller };
+          return { description, images, brand, metaDescription, imageAlt };
         });
 
         return {
           id: slug,
           description: data.description,
           images: data.images,
-          seller: data.seller ?? slug.split('-')[0],
+          seller: depopSeller(data.metaDescription, data.imageAlt, slug),
+          brand: data.brand,
           isShippingOffered: true,
           url: `${PRODUCT_URL}${slug}`,
         };

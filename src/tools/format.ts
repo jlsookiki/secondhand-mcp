@@ -104,6 +104,10 @@ export function formatListingDetails(details: ListingDetails): string {
     lines.push(`👤 Seller: ${details.seller}`);
   }
 
+  if (details.brand) {
+    lines.push(`🏷️ Brand: ${details.brand}`);
+  }
+
   if (details.deliveryTypes && details.deliveryTypes.length > 0) {
     lines.push(`🚚 Delivery: ${details.deliveryTypes.join(', ')}`);
   }

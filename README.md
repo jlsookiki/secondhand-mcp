@@ -154,13 +154,13 @@ Search for items across marketplaces.
 | `limit` | No | `20` | Max results |
 | `showSold` | No | `false` | Include sold items (Facebook, SidelineSwap) |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark, SidelineSwap, Play It Again Sports; Geartrade: relevance and price only): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
-| `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings`. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
+| `sort` | No | `relevance` | Sort order (Poshmark, SidelineSwap, Play It Again Sports; Depop: price sorts only; Geartrade: relevance and price only): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
+| `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
 | `brand` | No | | Brand filter (Poshmark, Geartrade): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
-| `sizes` | No | | Size filter (Depop, Poshmark, Geartrade): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
-| `colors` | No | | Color filter (Depop, Poshmark): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
+| `sizes` | No | | Size filter (Poshmark, Geartrade): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
+| `colors` | No | | Color filter (Poshmark only): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
 
 **Data returned per marketplace:**
 
@@ -190,6 +190,7 @@ Get full details for a specific listing using an ID from search results.
 | All photos | Yes | Yes | Yes | Yes |
 | Location | City | City, State, Country | — | — |
 | Seller | Name | Username | Username | Username |
+| Brand | — | — | Yes | — |
 | Delivery types | Yes | — | — | — |
 | Shipping | Yes/No | Service codes | Yes/No | Always included |
 
@@ -212,7 +213,7 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 **eBay** — Uses the official eBay Browse API with OAuth 2.0 client credentials. Tokens are cached and auto-refreshed. The target regional marketplace is controlled by `EBAY_MARKETPLACE_ID` (default: `EBAY_US`).
 
-**Depop** — Uses a headless browser to search listings with support for category, condition, size, and color filters. The browser instance is shared across requests.
+**Depop** — Uses a headless browser to search listings, with price bounds and price sorts applied to the results. The browser instance is shared across requests.
 
 **Poshmark** — Uses a headless browser to search listings with support for condition, size, color, sort, and price filters. Poshmark is not location-based — all items ship nationally.
 
