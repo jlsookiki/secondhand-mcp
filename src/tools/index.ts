@@ -5,7 +5,7 @@ import { ArgumentError } from './arguments.js';
 import { ToolResult, errorResult } from './results.js';
 import { searchMarketplace } from './search-marketplace.js';
 
-export { tools } from './definitions.js';
+export { toolDefinitions } from './definitions.js';
 export { INSTRUCTIONS } from './instructions.js';
 
 const HANDLERS: Record<string, (args: unknown) => Promise<ToolResult>> = {

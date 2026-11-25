@@ -39,13 +39,18 @@ const h = vi.hoisted(() => {
     return mp;
   };
 
-  const registry = new Map<string, any>([
-    ['facebook', entry('facebook', 'Facebook Marketplace', false, true)],
-    ['ebay', entry('ebay', 'eBay', true, true)],
-    ['depop', entry('depop', 'Depop', false, true)],
-    ['poshmark', entry('poshmark', 'Poshmark', false, true)],
-    ['craigslist', entry('craigslist', 'Craigslist', false, false)],
-  ]);
+  const configured = [
+    entry('facebook', 'Facebook Marketplace', false, true),
+    entry('ebay', 'eBay', true, true),
+    entry('depop', 'Depop', false, true),
+    entry('poshmark', 'Poshmark', false, true),
+    entry('craigslist', 'Craigslist', false, false),
+  ];
+  // Empty until the server initializes it, as in the real registry, so tools built at import time show up as empty.
+  const registry = new Map<string, any>();
+  const initialize = () => {
+    for (const mp of configured) registry.set(mp.name, mp);
+  };
 
   return {
     searchCalls,
@@ -53,6 +58,7 @@ const h = vi.hoisted(() => {
     resizeCalls,
     impl,
     registry,
+    initialize,
     reset() {
       searchCalls.length = 0;
       detailCalls.length = 0;
@@ -78,7 +84,7 @@ vi.mock('@modelcontextprotocol/sdk/server/stdio.js', async () => {
 });
 
 vi.mock('../src/marketplaces/index.js', () => ({
-  initializeMarketplaces: () => {},
+  initializeMarketplaces: () => h.initialize(),
   registerMarketplace: () => {},
   getMarketplace: (name: string) => h.registry.get(name),
   getAllMarketplaces: () => [...h.registry.values()],
