@@ -1,4 +1,4 @@
-import { Listing, ListingDetails, ListingPart, SearchParams, SearchResult } from '../types.js';
+import { Listing, ListingAvailability, ListingDetails, ListingPart, SearchParams, SearchResult } from '../types.js';
 
 const ALL_MARKETPLACES_PER_SOURCE = 10;
 
@@ -66,11 +66,20 @@ function cheapestFirst(listings: Listing[]): Listing[] {
 
 function listingFooter(listing: Listing, includeImages: boolean, indent: string): string[] {
   const lines: string[] = [];
+  const shipping = shippingLine(listing);
+  if (shipping) lines.push(indent + shipping);
   const photos = photoLine(listing.images, includeImages);
   if (photos) lines.push(indent + photos);
   lines.push(`${indent}🆔 ${listing.id}`);
   lines.push(`${indent}🔗 ${listing.url}`);
   return lines;
+}
+
+/** A search result's cheapest shipping and, when that is a known amount, what it costs delivered. */
+export function shippingLine(listing: Pick<Listing, 'shipping' | 'total'>): string | undefined {
+  if (!listing.shipping) return undefined;
+  const total = listing.total ? ` (${listing.total} delivered)` : '';
+  return `📦 Shipping: ${listing.shipping}${total}`;
 }
 
 function photoLine(images: string[] | undefined, includeImages: boolean): string | undefined {
@@ -81,15 +90,73 @@ function photoLine(images: string[] | undefined, includeImages: boolean): string
 
 const UNAVAILABLE_NOTES: Record<ListingPart, string> = {
   photos: "Photos couldn't be loaded right now; asking again may bring them back.",
-  description: "The description, location and seller couldn't be loaded right now; asking again may bring them back.",
+  description: "The price, condition, description, location and seller couldn't be loaded right now; asking again may bring them back.",
 };
 
-export function formatListingDetails(details: ListingDetails): string {
+const AVAILABILITY_TEXT: Record<ListingAvailability, string> = {
+  available: '✅ Still for sale',
+  pending: '⏳ Sale pending',
+  sold: '🚫 Marked sold',
+  unavailable: '🚫 No longer listed',
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DAYS_PER_WEEK = 7;
+const DAYS_PER_MONTH = 30;
+
+/**
+ * How long ago a listing went up, by elapsed time rather than calendar date: a UTC date reads as
+ * tomorrow for a US shopper whose seller listed it in the evening.
+ */
+export function listingAge(listedAt: string, now: Date): string {
+  const days = Math.max(0, Math.floor((now.getTime() - Date.parse(listedAt)) / MS_PER_DAY));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < DAYS_PER_WEEK) return `${days} days ago`;
+  if (days < DAYS_PER_MONTH) return unitsAgo(Math.floor(days / DAYS_PER_WEEK), 'week');
+  return unitsAgo(Math.floor(days / DAYS_PER_MONTH), 'month');
+}
+
+function unitsAgo(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+}
+
+/** The listing's own facts (price, condition, age, whether it is still for sale), one line each. */
+export function factLines(details: ListingDetails, now: Date): string[] {
+  const lines: string[] = [];
+  if (details.price) lines.push(`💰 ${priceText(details.price, details.originalPrice)}`);
+  if (details.condition) lines.push(`✨ Condition: ${details.condition}`);
+  if (details.listedAt) lines.push(`📅 Listed ${listingAge(details.listedAt, now)}`);
+  if (details.availability) lines.push(AVAILABILITY_TEXT[details.availability]);
+  return lines;
+}
+
+function priceText(price: string, originalPrice: string | undefined): string {
+  return originalPrice ? `${price} (was ${originalPrice})` : price;
+}
+
+/** The cheapest shipping and what each service costs, or just whether it ships when the marketplace gives no costs. */
+export function detailShippingLines(details: ListingDetails): string[] {
+  if (!details.shipping) return details.isShippingOffered ? ['📦 Shipping available'] : [];
+  const services = (details.shippingOptions ?? []).map(
+    (option) => `   ${option.service ?? 'Shipping'}: ${option.cost}`
+  );
+  return [`📦 Shipping: ${details.shipping}`, ...services];
+}
+
+export function formatListingDetails(details: ListingDetails, now = new Date()): string {
   const lines = [
     `📋 Listing Details`,
+    ...(details.title ? [`**${details.title}**`] : []),
     `🔗 ${details.url}`,
     '',
   ];
+
+  const facts = factLines(details, now);
+  if (facts.length > 0) {
+    lines.push(...facts);
+    lines.push('');
+  }
 
   if (details.description) {
     lines.push(`**Description:** ${details.description}`);
@@ -112,9 +179,7 @@ export function formatListingDetails(details: ListingDetails): string {
     lines.push(`🚚 Delivery: ${details.deliveryTypes.join(', ')}`);
   }
 
-  if (details.isShippingOffered) {
-    lines.push(`📦 Shipping available`);
-  }
+  lines.push(...detailShippingLines(details));
 
   for (const part of details.unavailable ?? []) {
     lines.push(`⚠️ ${UNAVAILABLE_NOTES[part]}`);

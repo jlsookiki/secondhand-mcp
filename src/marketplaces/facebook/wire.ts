@@ -67,6 +67,16 @@ export interface DetailTarget {
   marketplace_listing_seller?: { name?: string | null } | null;
   delivery_types?: string[] | null;
   is_shipping_offered?: boolean | null;
+  // Read through listingFacts, which checks each shape itself.
+  marketplace_listing_title?: unknown;
+  listing_price?: unknown;
+  strikethrough_price?: unknown;
+  creation_time?: unknown;
+  attribute_data?: unknown;
+  is_sold?: unknown;
+  is_pending?: unknown;
+  is_live?: unknown;
+  is_hidden?: unknown;
 }
 
 export interface DetailData {
