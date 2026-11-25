@@ -89,6 +89,14 @@ describe('formatListingDetails facts', () => {
     ]);
   });
 
+  it('says the price, condition and seller are missing when the listing info could not be loaded', () => {
+    const text = formatListingDetails(details({ unavailable: ['description'] }));
+
+    expect(text).toContain(
+      "The price, condition, description, location and seller couldn't be loaded right now; asking again may bring them back."
+    );
+  });
+
   it('adds no facts block when there are none', () => {
     expect(formatListingDetails(details()).split('\n')).toEqual([
       '📋 Listing Details',

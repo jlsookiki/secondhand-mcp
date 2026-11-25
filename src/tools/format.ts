@@ -90,7 +90,7 @@ function photoLine(images: string[] | undefined, includeImages: boolean): string
 
 const UNAVAILABLE_NOTES: Record<ListingPart, string> = {
   photos: "Photos couldn't be loaded right now; asking again may bring them back.",
-  description: "The description, location and seller couldn't be loaded right now; asking again may bring them back.",
+  description: "The price, condition, description, location and seller couldn't be loaded right now; asking again may bring them back.",
 };
 
 const AVAILABILITY_TEXT: Record<ListingAvailability, string> = {
