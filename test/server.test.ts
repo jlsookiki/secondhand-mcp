@@ -831,6 +831,12 @@ describe('fetch (deep research)', () => {
     expect(body.metadata.unavailable).toEqual(['photos']);
   });
 
+  it('carries the brand and seller into the metadata', async () => {
+    h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
+    const body = jsonOf(await call('fetch', { id: 'depop:mesmeriser-levis-501-7877' }));
+    expect(body.metadata).toMatchObject({ seller: 'mesmeriser', brand: "Levi's" });
+  });
+
   it('returns the deep-research document shape', async () => {
     h.impl.facebook = {
       details: () =>
