@@ -237,17 +237,11 @@ describe('EbayMarketplace.search request', () => {
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBeNull();
   });
 
-  it.each([
-    ['new', 'NEW'],
-    ['like_new', 'LIKE_NEW'],
-    ['good', 'GOOD'],
-    ['fair', 'FAIR'],
-    ['excellent', 'USED'],
-  ] as const)('maps condition %s to the eBay conditions filter', async (condition, mapped) => {
+  it('sends the condition as eBay condition IDs', async () => {
     install();
-    await market().search({ query: 'lamp', condition });
+    await market().search({ query: 'lamp', condition: 'good' });
 
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(`conditions:{${mapped}}`);
+    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditionIds:{2750|2990|3000|3010|4000|5000|6000}');
   });
 
   it('sends no condition filter for "any"', async () => {
@@ -274,15 +268,8 @@ describe('EbayMarketplace.search request', () => {
     await market().search({ query: 'lamp', minPrice: 5, maxPrice: 20, condition: 'new' });
 
     expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe(
-      'price:[5..20],priceCurrency:USD,conditions:{NEW}'
+      'price:[5..20],priceCurrency:USD,conditionIds:{1000|1500|1750}'
     );
-  });
-
-  it('applies a filter for the "used" condition', async () => {
-    install();
-    await market().search({ query: 'lamp', condition: 'used' });
-
-    expect(query(callsTo(SEARCH_PATH)[0], 'filter')).toBe('conditions:{USED}');
   });
 
   it('sends priceCurrency alongside a price filter', async () => {
@@ -365,7 +352,7 @@ describe('EbayMarketplace.search results', () => {
     expect(listing.priceNumeric).toBeUndefined();
     expect(listing.images).toBeUndefined();
     expect(listing.location).toBeUndefined();
-    expect(listing.url).toBe('https://www.ebay.com/itm/v1|9|0');
+    expect(listing.url).toBe('https://www.ebay.com/itm/9');
   });
 
   it('reports the currency of a non-USD listing', async () => {
@@ -406,6 +393,67 @@ describe('EbayMarketplace.search results', () => {
   });
 });
 
+describe('EbayMarketplace.search shipping', () => {
+  it('gives each listing its cheapest shipping: an amount, free, calculated, or nothing when it does not ship', async () => {
+    install({
+      search: () =>
+        json({
+          total: 4,
+          itemSummaries: [
+            summary(1, {
+              shippingOptions: [
+                { shippingCostType: 'FIXED', shippingCost: { value: '8.95', currency: 'USD' } },
+                { shippingCostType: 'FIXED', shippingCost: { value: '12.00', currency: 'USD' } },
+              ],
+            }),
+            summary(2, { shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } }] }),
+            summary(3, { shippingOptions: [{ shippingCostType: 'CALCULATED', shippingCost: { value: '14.10', currency: 'USD' } }] }),
+            summary(4),
+          ],
+        }),
+    });
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.listings.map((l) => l.shipping)).toEqual(['$8.95', 'Free', 'Calculated at checkout', undefined]);
+    expect(result.listings.map((l) => l.total)).toEqual(['$18.95', '$10.00', undefined, undefined]);
+  });
+
+  it('totals a price written with thousands separators', async () => {
+    install({
+      search: () =>
+        json({
+          total: 1,
+          itemSummaries: [
+            summary(1, {
+              price: { value: '1,234.56', currency: 'USD' },
+              shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '45.00', currency: 'USD' } }],
+            }),
+          ],
+        }),
+    });
+
+    expect((await market().search({ query: 'sofa' })).listings[0].total).toBe('$1279.56');
+  });
+
+  it('gives no total for a listing without a price', async () => {
+    install({
+      search: () =>
+        json({
+          total: 1,
+          itemSummaries: [
+            summary(1, { price: undefined, shippingOptions: [{ shippingCostType: 'FIXED', shippingCost: { value: '5.00', currency: 'USD' } }] }),
+          ],
+        }),
+    });
+
+    const [listing] = (await market().search({ query: 'lamp' })).listings;
+
+    expect(listing.shipping).toBe('$5.00');
+    expect(listing.total).toBeUndefined();
+  });
+});
+
 describe('EbayMarketplace.search pagination', () => {
   it('pages in 200-item requests until the limit is filled', async () => {
     const page = (start: number, count: number) => ({
@@ -437,8 +485,8 @@ describe('EbayMarketplace.search pagination', () => {
     await market().search({ query: 'lamp', limit: 210, condition: 'new', maxPrice: 50 });
 
     expect(callsTo(SEARCH_PATH).map((c) => query(c, 'filter'))).toEqual([
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
-      'price:[..50],priceCurrency:USD,conditions:{NEW}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
+      'price:[..50],priceCurrency:USD,conditionIds:{1000|1500|1750}',
     ]);
   });
 
@@ -561,21 +609,27 @@ describe('EbayMarketplace.search failures', () => {
 });
 
 describe('EbayMarketplace.getListingDetails', () => {
-  it('wraps a bare numeric id as v1|<id>|0 and percent-encodes the pipes', async () => {
-    install();
-    await market().getListingDetails('123456');
+  it.each(['123456', 'v1|123456|0', 'v1|123456', '123456|0', 'https://www.ebay.com/itm/123456'])(
+    'looks listing %s up by its listing number, which also answers for a multi-variation listing',
+    async (id) => {
+      install();
+      await market().getListingDetails(id);
 
-    expect(callsTo(ITEM_PATH)[0].url).toBe(
-      'https://api.ebay.com/buy/browse/v1/item/v1%7C123456%7C0'
-    );
-  });
+      expect(callsTo(ITEM_PATH).map((c) => c.url)).toEqual([
+        'https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=123456',
+      ]);
+    }
+  );
 
-  it.each(['v1|123456|0', 'v1|123456|123'])('leaves an already-wrapped id %s alone', async (id) => {
-    install();
-    await market().getListingDetails(id);
+  it.each(['v1|123456|789', '123456|789', 'https://www.ebay.com/itm/Blue-Lamp/123456?var=789&hash=x'])(
+    'fetches option %s of a multi-variation listing directly, percent-encoding the pipes',
+    async (id) => {
+      install();
+      await market().getListingDetails(id);
 
-    expect(decodeURIComponent(callsTo(ITEM_PATH)[0].url.split('/item/')[1])).toBe(id);
-  });
+      expect(callsTo(ITEM_PATH)[0].url).toBe('https://api.ebay.com/buy/browse/v1/item/v1%7C123456%7C789');
+    }
+  );
 
   it('sends the bearer token and marketplace header', async () => {
     install({ token: () => json({ access_token: 'tok-abc', expires_in: 7200 }) });
@@ -618,8 +672,57 @@ describe('EbayMarketplace.getListingDetails', () => {
       seller: 'lampking',
       deliveryTypes: ['Standard', 'Expedited'],
       isShippingOffered: true,
+      shipping: 'Calculated at checkout',
+      shippingOptions: [
+        { service: 'Standard', cost: 'Calculated at checkout' },
+        { service: 'Expedited', cost: 'Calculated at checkout' },
+      ],
       url: 'https://www.ebay.de/itm/123456',
     });
+  });
+
+  it('prices each shipping service, leaving local pickup out', async () => {
+    install({
+      item: () =>
+        json({
+          itemId: 'v1|9|0',
+          itemWebUrl: 'https://www.ebay.com/itm/9',
+          shippingOptions: [
+            { type: 'STANDARD', shippingServiceCode: 'USPS Ground Advantage', shippingCostType: 'FIXED', shippingCost: { value: '6.50', currency: 'USD' } },
+            { type: 'EXPEDITED', shippingServiceCode: 'UPS 2nd Day Air', shippingCostType: 'CALCULATED', shippingCost: { value: '21.00', currency: 'USD' } },
+            { type: 'PICKUP', shippingServiceCode: 'Local pickup', shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } },
+          ],
+        }),
+    });
+
+    const details = await market().getListingDetails('9');
+
+    // The calculated service might undercut $6.50, so the cheapest is not claimed.
+    expect(details.shipping).toBe('Calculated at checkout');
+    expect(details.isShippingOffered).toBe(true);
+    expect(details.shippingOptions).toEqual([
+      { service: 'USPS Ground Advantage', cost: '$6.50' },
+      { service: 'UPS 2nd Day Air', cost: 'Calculated at checkout' },
+    ]);
+  });
+
+  it('does not offer shipping on a pickup-only listing', async () => {
+    install({
+      item: () =>
+        json({
+          itemId: 'v1|10|0',
+          itemWebUrl: 'https://www.ebay.com/itm/10',
+          shippingOptions: [
+            { type: 'PICKUP', shippingServiceCode: 'Local pickup', shippingCostType: 'FIXED', shippingCost: { value: '0.00', currency: 'USD' } },
+          ],
+        }),
+    });
+
+    const details = await market().getListingDetails('10');
+
+    expect(details).toMatchObject({ isShippingOffered: false, deliveryTypes: ['Local pickup'] });
+    expect(details.shipping).toBeUndefined();
+    expect(details.shippingOptions).toBeUndefined();
   });
 
   it('reads the seller\'s HTML description as text', async () => {
@@ -676,7 +779,7 @@ describe('EbayMarketplace.getListingDetails', () => {
   it('rejects on a non-JSON body', async () => {
     install({ item: () => new Response('<html>oops</html>', { status: 200 }) });
 
-    await expect(market().getListingDetails('123456')).rejects.toThrow();
+    await expect(market().getListingDetails('123456')).rejects.toThrow('eBay API returned a body that is not JSON');
   });
 
   it('rejects when the token request fails', async () => {
@@ -684,6 +787,349 @@ describe('EbayMarketplace.getListingDetails', () => {
 
     await expect(market().getListingDetails('123456')).rejects.toThrow('eBay OAuth failed');
     expect(callsTo(ITEM_PATH)).toHaveLength(0);
+  });
+});
+
+describe('EbayMarketplace multi-variation listings', () => {
+  const LEGACY = '/item/get_item_by_legacy_id';
+  const GROUP = '/item/get_items_by_item_group';
+
+  function option(variation: string, size: string, price: string, status = 'IN_STOCK', over: Record<string, unknown> = {}) {
+    return {
+      itemId: `v1|555|${variation}`,
+      price: { value: price, currency: 'USD' },
+      itemWebUrl: `https://www.ebay.com/itm/555?var=${variation}`,
+      localizedAspects: [
+        { name: 'Brand', value: 'Acme' },
+        { name: 'Size', value: size },
+        { name: 'Color', value: 'Black' },
+      ],
+      estimatedAvailabilities: [{ estimatedAvailabilityStatus: status }],
+      image: { imageUrl: `https://i.ebayimg.com/images/g/${variation}/s-l500.jpg` },
+      seller: { username: 'acme' },
+      ...over,
+    };
+  }
+
+  const GROUP_BODY = {
+    items: [option('11', 'L', '12.99', 'OUT_OF_STOCK'), option('12', 'M', '9.99'), option('13', 'S', '9.99', 'LIMITED_STOCK')],
+    commonDescriptions: [{ description: '<p>Shared description</p>', itemIds: ['v1|555|11', 'v1|555|12', 'v1|555|13'] }],
+  };
+
+  const browseError = (errorId: number, status = 404) => json({ errors: [{ errorId, message: 'eBay says no' }] }, status);
+
+  function route(handlers: Array<[string, () => Response]>): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.startsWith(TOKEN_URL)) return json({ access_token: 'tok-1', expires_in: 7200 });
+        const hit = handlers.find(([fragment]) => url.includes(fragment));
+        if (!hit) throw new Error(`unrouted fetch: ${url}`);
+        return hit[1]();
+      })
+    );
+  }
+
+  const itemCalls = () =>
+    calls.filter((c) => c.url.includes('/buy/browse/v1')).map((c) => decodeURIComponent(c.url.split('/browse/v1')[1]));
+
+  it('answers a listing number that names a group with every option, available ones first', async () => {
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json(GROUP_BODY)]]);
+
+    const details = await market().getListingDetails('555');
+
+    expect(itemCalls()).toEqual(['/item/get_item_by_legacy_id?legacy_item_id=555', '/item/get_items_by_item_group?item_group_id=555']);
+    expect(details.optionAxes).toEqual(['Size']);
+    expect(details.optionCount).toBe(3);
+    expect(details.options).toEqual([
+      { id: 'v1|555|12', aspects: { Size: 'M' }, price: '$9.99', priceNumeric: 9.99, available: true, url: 'https://www.ebay.com/itm/555?var=12' },
+      { id: 'v1|555|13', aspects: { Size: 'S' }, price: '$9.99', priceNumeric: 9.99, available: true, url: 'https://www.ebay.com/itm/555?var=13' },
+      { id: 'v1|555|11', aspects: { Size: 'L' }, price: '$12.99', priceNumeric: 12.99, available: false, url: 'https://www.ebay.com/itm/555?var=11' },
+    ]);
+    // The listing link opens with nothing chosen; each option's link chooses it.
+    expect(details.url).toBe('https://www.ebay.com/itm/555');
+    expect(details.description).toBe('Shared description');
+    expect(details.id).toBe('v1|555|12');
+    expect(details.seller).toBe('acme');
+    // Only the sold-out option costs more, so nobody can buy at a different price.
+    expect(details.priceRange).toBeUndefined();
+  });
+
+  it('answers a listing number that names a single item from that one lookup', async () => {
+    route([[LEGACY, () => json({ itemId: 'v1|777|0', itemWebUrl: 'https://www.ebay.com/itm/777' })]]);
+
+    const details = await market().getListingDetails('777');
+
+    expect(itemCalls()).toHaveLength(1);
+    expect(details.options).toBeUndefined();
+    expect(details.url).toBe('https://www.ebay.com/itm/777');
+  });
+
+  it('answers a question about one option with every option of its listing', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), description: '<p>Chosen option</p>', primaryItemGroup: { itemGroupId: '555' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => json(GROUP_BODY)]]);
+
+    const details = await market().getListingDetails('v1|555|12');
+
+    expect(itemCalls()).toEqual(['/item/v1|555|12', '/item/get_items_by_item_group?item_group_id=555']);
+    expect(details.id).toBe('v1|555|12');
+    expect(details.description).toBe('Chosen option');
+    expect(details.url).toBe('https://www.ebay.com/itm/555?var=12');
+    expect(details.options?.map((o) => o.aspects.Size)).toEqual(['M', 'S', 'L']);
+    expect(details.optionCount).toBe(3);
+  });
+
+  it('links an option that is not part of a group to that option alone', async () => {
+    route([['/item/v1%7C555%7C12', () => json(option('12', 'M', '9.99'))]]);
+
+    const details = await market().getListingDetails('v1|555|12');
+
+    expect(itemCalls()).toHaveLength(1);
+    expect(details.url).toBe('https://www.ebay.com/itm/555?var=12');
+    expect(details.options).toBeUndefined();
+  });
+
+  it('still answers with the option alone when its listing cannot be read', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), primaryItemGroup: { itemGroupId: '555' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => browseError(11002)]]);
+
+    const details = await market().getListingDetails('v1|555|12');
+
+    expect(details.id).toBe('v1|555|12');
+    expect(details.options).toBeUndefined();
+    expect(details.unavailable).toEqual(['options']);
+  });
+
+  it('does not call an option sold as one item when its listing cannot be read', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), primaryItemGroup: { itemGroupId: '555' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => browseError(11002)]]);
+
+    const details = await market().getListingDetails('v1|555|12', { Size: ['L'] });
+
+    expect(details.optionFilter).toBeUndefined();
+    expect(details.unavailable).toEqual(['options']);
+  });
+
+  it('reads the group eBay names for the option', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), primaryItemGroup: { itemGroupId: '556' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => json(GROUP_BODY)]]);
+
+    await market().getListingDetails('v1|555|12');
+
+    expect(itemCalls()[1]).toBe('/item/get_items_by_item_group?item_group_id=556');
+  });
+
+  it('prices an option eBay sends without a currency by its amount alone', async () => {
+    const bare = { ...option('12', 'M', '9.99'), price: { value: '9.99' } };
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json({ items: [bare, option('13', 'S', '8.99')] })]]);
+
+    const details = await market().getListingDetails('555');
+
+    expect(details.options?.[0]).toMatchObject({ price: '9.99', priceNumeric: 9.99 });
+  });
+
+  it('falls back to the listing when the asked-for option is gone', async () => {
+    route([['/item/v1%7C555%7C99', () => browseError(11001)], [GROUP, () => json(GROUP_BODY)]]);
+
+    const details = await market().getListingDetails('v1|555|99');
+
+    expect(itemCalls()).toEqual(['/item/v1|555|99', '/item/get_items_by_item_group?item_group_id=555']);
+    expect(details.optionCount).toBe(3);
+  });
+
+  it('reports an ended listing with its eBay error and makes no second call', async () => {
+    route([[LEGACY, () => browseError(11003)]]);
+
+    await expect(market().getListingDetails('888')).rejects.toThrow('eBay API returned 404 (11003)');
+    expect(itemCalls()).toHaveLength(1);
+  });
+
+  it('reports a group that is gone as well', async () => {
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => browseError(11002)]]);
+
+    await expect(market().getListingDetails('555')).rejects.toThrow('eBay API returned 404 (11002)');
+  });
+
+  it('reports a group that comes back without options', async () => {
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json({ items: [] })]]);
+
+    await expect(market().getListingDetails('555')).rejects.toThrow(/^eBay API returned 200$/);
+  });
+
+  it('looks up an id it does not recognise as given', async () => {
+    route([['/item/abc', () => json({ itemId: 'abc', itemWebUrl: 'https://www.ebay.com/itm/abc' })]]);
+    await market().getListingDetails('abc');
+    expect(itemCalls()).toEqual(['/item/abc']);
+
+    route([['/item/abc', () => browseError(11001)]]);
+    await expect(market().getListingDetails('abc')).rejects.toThrow('eBay API returned 404 (11001)');
+  });
+
+  it('does not retry an option that fails for another reason', async () => {
+    route([['/item/v1%7C555%7C12', () => browseError(11004, 500)]]);
+
+    await expect(market().getListingDetails('v1|555|12')).rejects.toThrow('eBay API returned 500 (11004)');
+    expect(itemCalls()).toHaveLength(1);
+  });
+
+  it('reports an error body that is not JSON by its status alone', async () => {
+    route([[LEGACY, () => new Response('<html>busy</html>', { status: 503 })]]);
+
+    await expect(market().getListingDetails('888')).rejects.toThrow(/^eBay API returned 503$/);
+  });
+
+  it('shows a few options of a long list, available first, with every value and the price range', async () => {
+    const items = Array.from({ length: 40 }, (_, i) =>
+      option(String(100 + i), `W${i}`, String(5 + i), i < 5 ? 'OUT_OF_STOCK' : 'IN_STOCK')
+    );
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json({ items })]]);
+
+    const details = await market().getListingDetails('555');
+
+    expect(details.options).toHaveLength(10);
+    expect(details.options!.every((o) => o.available)).toBe(true);
+    expect(details.optionCount).toBe(40);
+    expect(details.optionValues?.Size).toHaveLength(40);
+    expect(details.priceRange).toEqual({ low: '$10', high: '$44', lowNumeric: 10, highNumeric: 44 });
+    expect(details.optionFilter).toBeUndefined();
+  });
+
+  it("shows the options matching the shopper's choice, however the seller spelled the axis", async () => {
+    const colours = [option('21', 'M', '9.99'), option('22', 'L', '12.99'), option('23', 'L', '12.99', 'OUT_OF_STOCK')].map((o, i) => ({
+      ...o,
+      localizedAspects: [...o.localizedAspects.filter((a) => a.name !== 'Color'), { name: 'Color-', value: ['Navy', 'Navy', 'Red'][i] }],
+    }));
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json({ items: colours })]]);
+
+    const details = await market().getListingDetails('555', { size: ['l'], COLOR: [' navy '] });
+
+    expect(details.options?.map((o) => o.id)).toEqual(['v1|555|22']);
+    expect(details.optionFilter).toEqual({ size: ['l'], COLOR: [' navy '] });
+    expect(details.matchingOptions).toBe(1);
+    expect(details.optionValues).toEqual({ Size: ['M', 'L'], 'Color-': ['Navy', 'Red'] });
+  });
+
+  it('lists up to the larger cap of options matching a choice', async () => {
+    const items = Array.from({ length: 40 }, (_, i) =>
+      option(String(100 + i), 'L', '5.00', 'IN_STOCK', {
+        localizedAspects: [{ name: 'Size', value: 'L' }, { name: 'Style', value: `S${i}` }],
+      })
+    );
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json({ items })]]);
+
+    const details = await market().getListingDetails('555', { Size: ['L'] });
+
+    expect(details.options).toHaveLength(30);
+    expect(details.matchingOptions).toBe(40);
+    expect(details.priceRange).toBeUndefined();
+  });
+
+  it('answers a choice nothing matches with no options and every value', async () => {
+    route([[LEGACY, () => browseError(11006, 400)], [GROUP, () => json(GROUP_BODY)]]);
+
+    const details = await market().getListingDetails('555', { Size: ['XXL'] });
+
+    expect(details.options).toEqual([]);
+    expect(details.matchingOptions).toBe(0);
+    expect(details.optionValues).toEqual({ Size: ['L', 'M', 'S'] });
+  });
+
+  it('keeps the choice made for a listing sold as a single item, with no options', async () => {
+    route([[LEGACY, () => json({ itemId: 'v1|777|0', itemWebUrl: 'https://www.ebay.com/itm/777' })]]);
+
+    const details = await market().getListingDetails('777', { Size: ['L'] });
+
+    expect(details.options).toBeUndefined();
+    expect(details.optionCount).toBeUndefined();
+    expect(details.optionFilter).toEqual({ Size: ['L'] });
+  });
+
+  it('narrows the options of a listing reached through one of its options', async () => {
+    const chosen = { ...option('12', 'M', '9.99'), primaryItemGroup: { itemGroupId: '555' } };
+    route([['/item/v1%7C555%7C12', () => json(chosen)], [GROUP, () => json(GROUP_BODY)]]);
+
+    const details = await market().getListingDetails('v1|555|12', { Size: ['L'] });
+
+    // The answer describes and links the option the shopper chose, not the one they came from.
+    expect(details.id).toBe('v1|555|11');
+    expect(details.url).toBe('https://www.ebay.com/itm/555?var=11');
+    expect(details.options?.map((o) => o.id)).toEqual(['v1|555|11']);
+  });
+
+  it('opens a listing from an eBay share link without fetching the eBay page', async () => {
+    route([
+      ['https://ebay.us/m/m2KbLr', () => new Response(null, { status: 301, headers: { location: 'https://www.ebay.com/itm/555?mkcid=16&var=&media=COPY' } })],
+      [LEGACY, () => browseError(11006, 400)],
+      [GROUP, () => json(GROUP_BODY)],
+    ]);
+
+    const details = await market().getListingDetails('https://ebay.us/m/m2KbLr');
+
+    const share = calls.find((c) => c.url === 'https://ebay.us/m/m2KbLr')!;
+    expect(share.init).toMatchObject({ redirect: 'manual' });
+    expect(share.init?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls.some((c) => c.url.includes('www.ebay.com'))).toBe(false);
+    expect(itemCalls()).toEqual(['/item/get_item_by_legacy_id?legacy_item_id=555', '/item/get_items_by_item_group?item_group_id=555']);
+    expect(details.optionCount).toBe(3);
+  });
+
+  it('opens a listing from an ebay.io share link, as eBay answered one in September 2026', async () => {
+    route([
+      ['https://ebay.io/m/j83XnV', () => new Response(null, {
+        status: 301,
+        headers: { location: 'https://www.ebay.com/itm/267688076938?var=&mkevt=1&mkcid=16&mkrid=711-127632-2357-0&sssrc=4429486&ssuid=Q8360VHnSMu&ssspo=2bXkAJ4TSsu&stype=1&widget_ver=artemis&media=COPY' },
+      })],
+      [LEGACY, () => json({ itemId: 'v1|267688076938|0', itemWebUrl: 'https://www.ebay.com/itm/267688076938' })],
+    ]);
+
+    const details = await market().getListingDetails('https://ebay.io/m/j83XnV');
+
+    expect(details.id).toBe('v1|267688076938|0');
+    expect(itemCalls()).toEqual(['/item/get_item_by_legacy_id?legacy_item_id=267688076938']);
+  });
+
+  it('opens the option a share link names', async () => {
+    route([
+      ['https://ebay.us/m/abc123', () => new Response(null, { status: 301, headers: { location: 'https://www.ebay.com/itm/555?var=12' } })],
+      ['/item/v1%7C555%7C12', () => json(option('12', 'M', '9.99'))],
+    ]);
+
+    const details = await market().getListingDetails('ebay.us/m/abc123');
+
+    expect(details.id).toBe('v1|555|12');
+  });
+
+  it.each([
+    ['a page instead of a redirect', () => new Response('<html></html>', { status: 200 })],
+    ['a redirect off eBay', () => new Response(null, { status: 301, headers: { location: 'https://evil.example/itm/555' } })],
+    ['an unknown code', () => new Response(null, { status: 404 })],
+  ])('fails a share link that answers with %s, without an eBay lookup', async (_label, answer) => {
+    route([['https://ebay.us/m/abc123', answer]]);
+
+    await expect(market().getListingDetails('https://ebay.us/m/abc123')).rejects.toThrow(/^eBay share link did not resolve \(\d+\)$/);
+    expect(itemCalls()).toHaveLength(0);
+  });
+
+  it('marks search rows sold in several options', async () => {
+    route([
+      ['/item_summary/search', () =>
+        json({ total: 2, itemSummaries: [summary(1), summary(2, { itemId: 'v1|2|77', itemGroupHref: 'https://api.ebay.com/x' })] }),
+      ],
+    ]);
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.listings.map((l) => l.hasOptions)).toEqual([undefined, true]);
+  });
+
+  it('opens a search result without a link on the option whose price it shows', async () => {
+    route([['/item_summary/search', () => json({ total: 1, itemSummaries: [{ itemId: 'v1|2|77' }] })]]);
+
+    const result = await market().search({ query: 'lamp' });
+
+    expect(result.listings[0].url).toBe('https://www.ebay.com/itm/2?var=77');
   });
 });
 

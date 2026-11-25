@@ -79,7 +79,7 @@ export function toolDefinitions(): AnnotatedTool[] {
           },
           condition: {
             type: 'string',
-            description: 'Item condition filter. eBay: new, like_new, good, fair. Poshmark: new (with tags), like_new, good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+            description: 'Item condition filter. eBay: new or used only; a finer grade counts as used. Poshmark: new (with tags), like_new, good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
           },
           category: {
             type: 'string',
@@ -109,18 +109,18 @@ export function toolDefinitions(): AnnotatedTool[] {
     },
     {
       name: 'get_listing_details',
-      description: 'Get one listing in full using an id from search_marketplace or from a marketplace URL: description, every photo, location, seller and shipping options. Photos: by default (imageMode:"urls") you get direct full-resolution CDN image URLs to fetch yourself, which is the most reliable option because some CDNs block server-side fetches. Set imageMode:"inline" (or includeImages:true) to have the server fetch the photos and return them as base64 image blocks; if that fetch is blocked the server falls back to URLs. Use imageSize to trade resolution for payload and maxImages to cap the count. Requirements: the same as search_marketplace for that marketplace. Behavior: read-only, one listing per call, no login. Errors: a listing that has been removed, or an id from the wrong marketplace, returns an error message rather than a partial listing. Not for: searching (use search_marketplace) or fetching many listings at once.',
+      description: 'Get one listing in full using an id from search_marketplace or from a marketplace URL: description, every photo, location, seller and shipping options. An eBay listing sold in several options also lists what they differ by, their price range and a few options with their own price and link. Photos: by default (imageMode:"urls") you get direct full-resolution CDN image URLs to fetch yourself, which is the most reliable option because some CDNs block server-side fetches. Set imageMode:"inline" (or includeImages:true) to have the server fetch the photos and return them as base64 image blocks; if that fetch is blocked the server falls back to URLs. Use imageSize to trade resolution for payload and maxImages to cap the count. Requirements: the same as search_marketplace for that marketplace. Behavior: read-only, one listing per call, no login. Errors: a listing that has been removed, or an id from the wrong marketplace, returns an error message rather than a partial listing. Not for: searching (use search_marketplace) or fetching many listings at once.',
       annotations: { title: 'Get Listing Details', ...READ_ONLY },
       inputSchema: {
         type: 'object',
         properties: {
           listingId: {
             type: 'string',
-            description: 'The listing ID (from search results or a marketplace URL)'
+            description: 'The listing ID (from search results or a marketplace URL), sent as text. eBay also takes a listing link or a Share link (ebay.us, ebay.io).'
           },
           marketplace: {
             type: 'string',
-            description: 'Which marketplace the listing is from (default: facebook)',
+            description: 'Which marketplace the listing is from (default: facebook). Can be left out for an eBay link or an id prefixed like "ebay:123".',
             default: 'facebook'
           },
           imageMode: {
@@ -142,6 +142,11 @@ export function toolDefinitions(): AnnotatedTool[] {
           maxImages: {
             type: 'number',
             description: 'Cap the number of photos returned (default: all). Use to keep the response small for listings with many photos.'
+          },
+          options: {
+            type: 'object',
+            additionalProperties: { type: 'array', items: { type: 'string' } },
+            description: 'eBay only. For a listing sold in several options (sizes, colours): the shopper\'s choice, by the option names the listing shows, any listed value matching, e.g. {"Size": ["L"]} or {"Color": ["Navy"], "Size": ["M", "L"]}. Returns the matching options with their prices. Without it, a few options are shown.'
           }
         },
         required: ['listingId']

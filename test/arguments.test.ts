@@ -4,7 +4,10 @@ import {
   booleanArg,
   choiceArg,
   countArg,
+  exactListingId,
+  listingIdArg,
   numberArg,
+  optionFilterArg,
   stringArg,
   stringListArg,
 } from '../src/tools/arguments.js';
@@ -108,6 +111,60 @@ describe('choiceArg', () => {
 
   it('names the allowed values when one is not listed', () => {
     expect(() => choiceArg({ imageMode: 'base64' }, 'imageMode', MODES)).toThrow('imageMode must be one of: urls, inline');
+  });
+});
+
+describe('listingIdArg', () => {
+  it.each([
+    ['v1|123|0', 'v1|123|0'],
+    [123456, '123456'],
+    [Number.MAX_SAFE_INTEGER, '9007199254740991'],
+    ['29077057795219417', '29077057795219417'],
+    ['', undefined],
+    [null, undefined],
+  ])('reads %j as %j', (value, expected) => {
+    expect(listingIdArg({ listingId: value }, 'listingId')).toBe(expected);
+  });
+
+  it.each([29077057795219417, Number.MAX_SAFE_INTEGER + 1, 1.5])('refuses %j, whose digits may already be wrong', (value) => {
+    expect(() => listingIdArg({ listingId: value }, 'listingId')).toThrow('Pass listingId as text');
+  });
+
+  it('refuses a value that is neither text nor a number', () => {
+    expect(() => listingIdArg({ listingId: true }, 'listingId')).toThrow('listingId must be a string');
+  });
+});
+
+describe('exactListingId', () => {
+  it('names the argument it refuses', () => {
+    expect(() => exactListingId(2 ** 60, 'id')).toThrow(/^Pass id as text/);
+  });
+});
+
+describe('optionFilterArg', () => {
+  it.each([
+    [{ Size: ['L'] }, { Size: ['L'] }],
+    [{ Size: 'L' }, { Size: ['L'] }],
+    ['{"Size":"L"}', { Size: ['L'] }],
+    [{ ' Size ': [' L ', 10] }, { Size: ['L', '10'] }],
+    [{ Size: ['L'], Color: [] }, { Size: ['L'] }],
+    [{}, undefined],
+    ['{}', undefined],
+    [{ ' ': ['L'] }, undefined],
+    [null, undefined],
+    ['', undefined],
+  ])('reads %j as %j', (value, expected) => {
+    expect(optionFilterArg({ options: value }, 'options')).toEqual(expected);
+  });
+
+  it.each(['L', 'null', '["L"]', ['L'], 5])('rejects %j, which names no option', (value) => {
+    expect(() => optionFilterArg({ options: value }, 'options')).toThrow(
+      'options must map option names to lists of values, like {"Size": ["L"]}'
+    );
+  });
+
+  it.each([{ Size: null }, { Size: true }, '{"Size":[{"v":"L"}]}'])('rejects values that are not text in %j', (value) => {
+    expect(() => optionFilterArg({ options: value }, 'options')).toThrow('options values must be text');
   });
 });
 

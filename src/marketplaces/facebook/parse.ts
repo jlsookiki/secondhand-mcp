@@ -1,5 +1,5 @@
 import { parsePrice } from '../base.js';
-import { Listing } from '../../types.js';
+import { Listing, ListingAvailability } from '../../types.js';
 import { FeedEdge, FeedListing, FeedUnits } from './wire.js';
 
 // Nodes Facebook uses to say something rather than to carry a listing.
@@ -53,6 +53,8 @@ export function parseListings(edges: Array<FeedEdge | null>, limit: number, show
       // object is the contract.
       const listing = edge?.node?.listing;
       if (!listing) continue;
+      const title: unknown = listing.marketplace_listing_title;
+      if (title != null && typeof title !== 'string') continue;
       if (!showSold && isUnavailable(listing)) continue;
 
       const price = listing.listing_price?.formatted_amount || 'Price not listed';
@@ -82,14 +84,33 @@ export function parseListings(edges: Array<FeedEdge | null>, limit: number, show
 }
 
 function isUnavailable(listing: FeedListing): boolean {
-  if (listing.is_sold === true) return true;
-  if (listing.is_live === false) return true;
-  if (listing.is_pending === true) return true;
-  if (listing.is_hidden === true) return true;
+  const availability = listingAvailability(listing);
+  return availability !== undefined && availability !== 'available';
+}
 
-  // Sellers sometimes mark sold items in the title instead.
-  const title = (listing.marketplace_listing_title || '').toUpperCase();
-  return title.startsWith('[SOLD]') || title.startsWith('SOLD -') || title === 'SOLD';
+/** A field of an object Facebook sent, without trusting its shape. */
+export function fieldOf(value: unknown, key: string): unknown {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+// Sellers often mark a sale in the title before, or instead of, marking it sold.
+const SOLD_TITLE = /^(\[SOLD\]|SOLD -|SOLD$)/i;
+
+/** Whether a Facebook listing is still for sale, by its flags and the seller's title; undefined when it says neither. */
+export function listingAvailability(listing: unknown): ListingAvailability | undefined {
+  if (isMarkedSold(listing)) return 'sold';
+  if (fieldOf(listing, 'is_pending') === true) return 'pending';
+  if (fieldOf(listing, 'is_live') === false) return 'unavailable';
+  if (fieldOf(listing, 'is_hidden') === true) return 'unavailable';
+  if (fieldOf(listing, 'is_live') === true) return 'available';
+  if (fieldOf(listing, 'is_sold') === false) return 'available';
+  return undefined;
+}
+
+function isMarkedSold(listing: unknown): boolean {
+  if (fieldOf(listing, 'is_sold') === true) return true;
+  const title = fieldOf(listing, 'marketplace_listing_title');
+  return typeof title === 'string' && SOLD_TITLE.test(title.trim());
 }
 
 function listingLocation(listing: FeedListing): string | undefined {

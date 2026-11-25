@@ -9,7 +9,7 @@ type DetailsImpl = (id: string) => Promise<ListingDetails> | ListingDetails;
 
 const h = vi.hoisted(() => {
   const searchCalls: Array<{ marketplace: string; params: any }> = [];
-  const detailCalls: Array<{ marketplace: string; id: string }> = [];
+  const detailCalls: Array<{ marketplace: string; id: string; filter?: unknown }> = [];
   const resizeCalls: Array<[string, number]> = [];
   const impl: Record<string, { search?: (p: any) => any; details?: (id: string) => any }> = {};
 
@@ -29,8 +29,8 @@ const h = vi.hoisted(() => {
       },
     };
     if (withDetails) {
-      mp.getListingDetails = async (id: string) => {
-        detailCalls.push({ marketplace: name, id });
+      mp.getListingDetails = async (id: string, filter?: unknown) => {
+        detailCalls.push({ marketplace: name, id, ...(filter !== undefined && { filter }) });
         const fn = impl[name]?.details;
         if (!fn) throw new Error(`no details stub registered for ${name}`);
         return fn(id);
@@ -405,6 +405,13 @@ describe('search_marketplace results', () => {
     expect(text).not.toContain('🖼️ Images');
   });
 
+  it('says when a listing price is for one of several options', async () => {
+    h.impl.ebay = { search: () => ok('ebay', [listing({ id: 'a' }), listing({ id: 'b', hasOptions: true })]) };
+    const text = textOf(await call('search_marketplace', { query: 'chair', marketplace: 'ebay' }));
+    expect(text.match(/🎛️ Sold in several options/g)).toHaveLength(1);
+    expect(text.indexOf('🎛️')).toBeGreaterThan(text.indexOf('🆔 a'));
+  });
+
   it('prints image URLs only when includeImages is set', async () => {
     h.impl.facebook = { search: () => ok('facebook', [listing({ images: ['https://cdn/1.jpg'] })]) };
     const text = textOf(await call('search_marketplace', { query: 'chair', includeImages: true }));
@@ -494,6 +501,29 @@ describe('get_listing_details', () => {
     expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: '123456' }]);
   });
 
+  it('refuses a numeric listing id too long to be exact, rather than looking up another listing', async () => {
+    const res = await call('get_listing_details', { listingId: 29077057795219417, marketplace: 'ebay' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('Pass listingId as text');
+    expect(h.detailCalls).toEqual([]);
+  });
+
+  it.each(['https://www.ebay.com/itm/555?var=12', 'https://ebay.us/m/m2KbLr', 'ebay:555'])(
+    'opens %s on eBay without a marketplace',
+    async (listingId) => {
+      h.impl.ebay = { details: () => details() };
+      await call('get_listing_details', { listingId });
+      expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: listingId.replace(/^ebay:/, '') }]);
+    }
+  );
+
+  it('opens an eBay link on eBay even when marketplace says facebook', async () => {
+    h.impl.ebay = { details: () => details() };
+    const res = await call('get_listing_details', { listingId: 'https://www.ebay.com/itm/555', marketplace: 'facebook' });
+    expect(res.isError).toBeFalsy();
+    expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: 'https://www.ebay.com/itm/555' }]);
+  });
+
   it('rejects an image mode it does not know', async () => {
     const res = await call('get_listing_details', { listingId: '1', imageMode: 'base64' });
     expect(res.isError).toBe(true);
@@ -517,7 +547,61 @@ describe('get_listing_details', () => {
     h.impl.facebook = { details: () => details({ unavailable: ['photos', 'description'] }) };
     const text = textOf(await call('get_listing_details', { listingId: '1' }));
     expect(text).toContain("Photos couldn't be loaded right now");
-    expect(text).toContain("The description, location and seller couldn't be loaded right now");
+    expect(text).toContain("The price, condition, description, location and seller couldn't be loaded right now");
+  });
+
+  it("passes the shopper's option choice to the marketplace", async () => {
+    h.impl.ebay = { details: () => details() };
+    await call('get_listing_details', { listingId: '555', marketplace: 'ebay', options: { Size: 'L' } });
+    expect(h.detailCalls).toEqual([{ marketplace: 'ebay', id: '555', filter: { Size: ['L'] } }]);
+  });
+
+  it('refuses an options choice that names no option', async () => {
+    const res = await call('get_listing_details', { listingId: '555', marketplace: 'ebay', options: 'L' });
+    expect(res.isError).toBe(true);
+    expect(h.detailCalls).toEqual([]);
+  });
+
+  it('lists the options of a multi-variation listing with their values, prices and links', async () => {
+    h.impl.ebay = {
+      details: () =>
+        details({
+          optionAxes: ['Size'],
+          optionValues: { Size: ['M', 'L'] },
+          priceRange: { low: '$9.99', high: '$12.99' },
+          options: [
+            { id: 'v1|5|12', aspects: { Size: 'M' }, price: '$9.99', available: true, url: 'https://ebay/5?var=12' },
+            { id: 'v1|5|11', aspects: { Size: 'L' }, price: '$12.99', available: false, url: 'https://ebay/5?var=11' },
+          ],
+          optionCount: 40,
+        }),
+    };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay' }));
+    expect(text).toContain('🎛️ Options (40 in all, differing by Size):');
+    expect(text).toContain('   Size: M, L');
+    expect(text).toContain('   Prices from $9.99 to $12.99');
+    expect(text).toContain('   • Size M · $9.99 · 🆔 v1|5|12 · 🔗 https://ebay/5?var=12');
+    expect(text).toContain('   • Size L · $12.99 · sold out · 🆔 v1|5|11 · 🔗 https://ebay/5?var=11');
+    expect(text).toContain('This listing has 40 options and 2 are shown');
+  });
+
+  it('shows no options section for a listing sold as one item', async () => {
+    h.impl.ebay = { details: () => details() };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay' }));
+    expect(text).not.toContain('Options');
+  });
+
+  it('says an options choice does not apply to a listing sold as one item', async () => {
+    h.impl.ebay = { details: () => details({ optionFilter: { Size: ['L'] } }) };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay', options: { Size: 'L' } }));
+    expect(text).toContain('ℹ️ This listing is sold as one item, so the options choice does not apply');
+    expect(text).not.toContain('🎛️');
+  });
+
+  it("says a listing's other options could not be loaded", async () => {
+    h.impl.ebay = { details: () => details({ unavailable: ['options'] }) };
+    const text = textOf(await call('get_listing_details', { listingId: '5', marketplace: 'ebay' }));
+    expect(text).toContain("⚠️ This listing's other options couldn't be loaded right now; asking again may bring them back.");
   });
 
   it('shows the brand separately from the seller', async () => {
@@ -841,6 +925,14 @@ describe('fetch (deep research)', () => {
     h.impl.depop = { details: () => details({ seller: 'mesmeriser', brand: "Levi's" }) };
     const body = jsonOf(await call('fetch', { id: 'depop:mesmeriser-levis-501-7877' }));
     expect(body.metadata).toMatchObject({ seller: 'mesmeriser', brand: "Levi's" });
+  });
+
+  it('carries the options of a multi-variation listing into the metadata', async () => {
+    const options = [{ id: 'v1|5|12', aspects: { Size: 'M' }, price: '$9.99', available: true, url: 'https://ebay/5?var=12' }];
+    const shape = { optionAxes: ['Size'], optionValues: { Size: ['M', 'L'] }, priceRange: { low: '$9.99', high: '$12.99' }, options, optionCount: 2 };
+    h.impl.ebay = { details: () => details(shape) };
+    const body = jsonOf(await call('fetch', { id: 'ebay:5' }));
+    expect(body.metadata).toMatchObject(shape);
   });
 
   it('returns the deep-research document shape', async () => {

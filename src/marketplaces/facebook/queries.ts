@@ -8,14 +8,26 @@ export const DETAIL_INFO_DOC_ID = '26090240497332612';
 export const DEFAULT_RADIUS_MILES = 25;
 const MAX_RADIUS_MILES = 500;
 const KM_PER_MILE = 1.609;
+const CENTS_PER_DOLLAR = 100;
 export const API_PAGE_SIZE = 24;
 
-// Max price value Facebook uses as "no upper limit"
+// Max price value Facebook uses as "no upper limit", in cents like every
+// price bound the search variables take.
 const MAX_PRICE_SENTINEL = 214748364700;
 
 export interface PriceBounds {
   minPrice?: number;
   maxPrice?: number;
+}
+
+export function cents(dollars: number): number {
+  return Math.round(dollars * CENTS_PER_DOLLAR);
+}
+
+// Facebook reads both the search page's `radius` and the variables'
+// `filter_radius_km` as kilometres.
+export function radiusKm(radiusMiles: number): number {
+  return Math.round(radiusMiles * KM_PER_MILE);
 }
 
 export function clampRadius(radiusMiles: number | undefined): number {
@@ -61,9 +73,9 @@ export function searchVariables(
         commerce_search_and_rp_ctime_days: null,
         filter_location_latitude: coords.latitude,
         filter_location_longitude: coords.longitude,
-        filter_price_lower_bound: minPrice ?? 0,
-        filter_price_upper_bound: maxPrice ?? MAX_PRICE_SENTINEL,
-        filter_radius_km: Math.round(radiusMiles * KM_PER_MILE),
+        filter_price_lower_bound: minPrice == null ? 0 : cents(minPrice),
+        filter_price_upper_bound: maxPrice == null ? MAX_PRICE_SENTINEL : cents(maxPrice),
+        filter_radius_km: radiusKm(radiusMiles),
       },
       custom_request_params: {
         browse_context: null,
@@ -95,9 +107,10 @@ export function searchPageUrl(
   radiusMiles: number
 ): string {
   const search = new URLSearchParams({ query });
+  // The page takes its price bounds in dollars, unlike the search variables.
   if (minPrice != null) search.set('minPrice', String(minPrice));
   if (maxPrice != null) search.set('maxPrice', String(maxPrice));
-  search.set('radius', String(Math.round(radiusMiles)));
+  search.set('radius', String(radiusKm(radiusMiles)));
   return `https://www.facebook.com/marketplace/${pageId}/search?${search.toString()}`;
 }
 

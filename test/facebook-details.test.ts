@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FacebookMarketplace } from '../src/marketplaces/facebook/index.js';
+import { listingFacts } from '../src/marketplaces/facebook/details.js';
+import { listingAvailability } from '../src/marketplaces/facebook/parse.js';
 
 // The Facebook transport builds a ProxyAgent from SMARTPROXY_URL at module evaluation.
 vi.mock('undici', () => ({ ProxyAgent: class {} }));
@@ -295,5 +297,114 @@ describe('detail failures', () => {
     );
 
     await expect(getDetails()).resolves.toMatchObject({ description: 'Barely ridden, garage kept.' });
+  });
+});
+
+describe('listing facts', () => {
+  const info = (over: Record<string, unknown> = {}) => ({
+    marketplace_listing_title: 'Trek road bike',
+    listing_price: { formatted_amount: '$400', amount: '400.00', currency: 'USD' },
+    strikethrough_price: { formatted_amount: '$500' },
+    creation_time: 1790000000,
+    attribute_data: [
+      { attribute_name: 'Brand', value: 'trek', label: 'Trek' },
+      { attribute_name: 'Condition', value: 'used_like_new', label: 'Used - like new' },
+    ],
+    is_sold: false,
+    is_pending: false,
+    is_live: true,
+    ...over,
+  });
+
+  it('reads title, price, the price before a drop, condition, listing date and availability', () => {
+    expect(listingFacts(info())).toEqual({
+      title: 'Trek road bike',
+      price: '$400',
+      priceNumeric: 400,
+      originalPrice: '$500',
+      condition: 'Used - like new',
+      listedAt: '2026-09-21T14:13:20.000Z',
+      availability: 'available',
+    });
+  });
+
+  it.each([
+    [{ is_sold: true }, 'sold'],
+    [{ is_pending: true }, 'pending'],
+    [{ is_live: false }, 'unavailable'],
+    [{ is_hidden: true }, 'unavailable'],
+    [{ is_sold: true, is_pending: true }, 'sold'],
+    [{ marketplace_listing_title: 'SOLD - Trek road bike' }, 'sold'],
+    [{ marketplace_listing_title: '[sold] Trek road bike' }, 'sold'],
+    [{ marketplace_listing_title: ' Sold ' }, 'sold'],
+    [{ marketplace_listing_title: 'Soldering iron' }, 'available'],
+    [{ is_live: null }, 'available'],
+    [{ is_sold: null }, 'available'],
+  ])('reads %j as %s, the same as search does', (over, availability) => {
+    expect(listingFacts(info(over)).availability).toBe(availability);
+    expect(listingAvailability(info(over))).toBe(availability);
+  });
+
+  it('says nothing about availability when Facebook sends none of its signals', () => {
+    expect(listingAvailability({ marketplace_listing_title: 'Trek road bike' })).toBeUndefined();
+  });
+
+  it.each([
+    [{ marketplace_listing_title: { text: 'Trek road bike' } }, 'title'],
+    [{ marketplace_listing_title: '   ' }, 'title'],
+    [{ listing_price: { formatted_amount: 400 } }, 'price'],
+    [{ listing_price: { currency: 'USD' } }, 'price'],
+    [{ listing_price: { formatted_amount: 'Free' } }, 'priceNumeric'],
+    [{ creation_time: '1790000000' }, 'listedAt'],
+    [{ attribute_data: [{ attribute_name: 'Condition', label: { text: 'New' } }] }, 'condition'],
+    [{ attribute_data: { attribute_name: 'Condition', label: 'New' } }, 'condition'],
+  ])('leaves out a field Facebook sends in an unexpected shape: %j', (over, field) => {
+    expect(listingFacts(info(over))).not.toHaveProperty(field);
+  });
+
+  it('leaves out what the listing does not say', () => {
+    expect(listingFacts({})).toEqual({});
+    expect(listingFacts(null)).toEqual({});
+    const sparse = listingFacts(
+      info({ strikethrough_price: null, attribute_data: [], creation_time: null, is_sold: null, is_pending: null, is_live: null })
+    );
+    expect(sparse).toEqual({ title: 'Trek road bike', price: '$400', priceNumeric: 400 });
+  });
+
+  it.each([
+    [{ formatted_amount: '$400' }],
+    [{ amount: '400.00', currency: 'USD' }],
+  ])('drops a price before a drop of %j, which matches the price', (strikethrough) => {
+    expect(listingFacts(info({ strikethrough_price: strikethrough }))).not.toHaveProperty('originalPrice');
+  });
+
+  it('names a price from its amount and currency when Facebook sends no formatted price', () => {
+    expect(listingFacts(info({ listing_price: { amount: '75.00', currency: 'CAD' } }))).toMatchObject({
+      price: '75.00 CAD',
+      priceNumeric: 75,
+    });
+  });
+
+  it('names a price from its amount alone when Facebook sends no currency', () => {
+    expect(listingFacts(info({ listing_price: { amount: '75.00' } })).price).toBe('75.00');
+  });
+
+  it('takes the condition value when the entry has no label', () => {
+    expect(listingFacts(info({ attribute_data: [{ attribute_name: 'condition', value: 'new' }] })).condition).toBe('new');
+  });
+
+  it('carries the facts on a listing view', async () => {
+    stubDetails(photosTarget([]), infoTarget(info()));
+
+    const details = await getDetails();
+
+    expect(details).toMatchObject({
+      title: 'Trek road bike',
+      price: '$400',
+      condition: 'Used - like new',
+      listedAt: '2026-09-21T14:13:20.000Z',
+      availability: 'available',
+      description: 'Barely ridden, garage kept.',
+    });
   });
 });
