@@ -1,269 +1,289 @@
 /**
  * Poshmark Marketplace implementation
  *
- * Scrapes Poshmark's server-rendered search results. The previous scraper
- * waited for `.card` elements which no longer exist in Poshmark's markup;
- * results now render as `/listing/<slug>` tiles. Selectors key off the stable
- * /listing/ href, the <img>, and a price regex rather than styled class names.
- * No authentication required for public search.
+ * Reads Poshmark's own JSON API (`/vm-rest/posts`), the same data its web app
+ * loads, over plain HTTP. No browser and no authentication needed.
  */
 
 import { BaseMarketplace } from './base.js';
 import { SearchParams, SearchResult, Listing, ListingDetails } from '../types.js';
-import { newPage, rotateBrowser, withBrowserLock } from '../browser.js';
-import type { Page } from 'puppeteer-core';
 
-const MAX_RETRIES = 8;
-const NAV_TIMEOUT = 20000;
+const MAX_ATTEMPTS = 2;
+const ATTEMPT_TIMEOUT_MS = 10_000;
+const PAGE_SIZE = 48;
 
 const POSHMARK_BASE = 'https://poshmark.com';
-const SEARCH_URL = `${POSHMARK_BASE}/search`;
+const SEARCH_API = `${POSHMARK_BASE}/vm-rest/posts`;
 const LISTING_URL = `${POSHMARK_BASE}/listing/`;
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const REQUEST_HEADERS = { 'user-agent': USER_AGENT, accept: 'application/json', 'accept-language': 'en-US,en;q=0.9' };
 
-const CONDITION_MAP: Record<string, string> = {
+const CONDITION_CODES: Record<string, string> = {
   new: 'nwt',
-  like_new: 'nwot',
-  good: 'good',
-  fair: 'fair',
+  like_new: 'uln',
+  good: 'ug',
+  fair: 'uf',
 };
 
-const SORT_MAP: Record<string, string> = {
+const CONDITION_NAMES: Record<string, string> = {
+  nwt: 'New with tags',
+  not_nwt: 'New without tags',
+  ret: 'New',
+  uln: 'Like new',
+  ug: 'Good',
+  uf: 'Fair',
+};
+
+/** Price sorts are missing on purpose: Poshmark's price-sorted index ignores relevance and leads with placeholder posts
+ *  ($3 closet promotions, $50,000 wanted posts), so price order is applied here over a relevance-ranked page. */
+const SERVER_SORTS: Record<string, string> = {
   relevance: 'relevance',
   newest: 'added_desc',
-  price_low_to_high: 'price_asc',
-  price_high_to_low: 'price_desc',
   most_popular: 'like_count',
 };
+
+/** The search API's request. Its department filter answers any named department with a server error, so it is always All. */
+export interface PoshmarkSearchRequest {
+  query: string;
+  count: string;
+  sort_by?: string;
+  filters: {
+    department: 'All';
+    inventory_status: ['available'];
+    brand?: string[];
+    category_v2?: string;
+    size?: string[];
+    color?: string[];
+    condition?: string[];
+  };
+}
+
+interface PoshmarkMoney {
+  val?: string;
+  currency_symbol?: string;
+}
+
+interface PoshmarkPicture {
+  url_large?: string;
+  url?: string;
+}
+
+/** The fields this adapter reads from a post, in search results and from the single-post endpoint. */
+export interface PoshmarkPost {
+  id: string;
+  title?: string;
+  price_amount?: PoshmarkMoney;
+  picture_url?: string;
+  creator_username?: string;
+  condition?: string;
+  description?: string;
+  pictures?: PoshmarkPicture[];
+  cover_shot?: PoshmarkPicture;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPost(value: unknown): value is PoshmarkPost {
+  return isRecord(value) && typeof value.id === 'string';
+}
+
+type SearchFilters = Pick<SearchParams, 'sort' | 'condition' | 'category' | 'brand' | 'department' | 'sizes' | 'colors'>;
+type PriceShaping = Pick<SearchParams, 'sort' | 'minPrice' | 'maxPrice'>;
+
+export function sortsByPrice(sort: SearchParams['sort']): boolean {
+  return sort === 'price_low_to_high' || sort === 'price_high_to_low';
+}
+
+/** Price bounds and price order are applied after the fetch, so either asks for a full page to cut and order. */
+export function requestCount(limit: number, shaping: PriceShaping): number {
+  if (shaping.minPrice != null || shaping.maxPrice != null || sortsByPrice(shaping.sort)) return PAGE_SIZE;
+  return Math.min(Math.max(limit, 1), PAGE_SIZE);
+}
+
+/** The department leads the query instead, which Poshmark's search ranks on as its web app's department filter would. */
+export function searchQuery(query: string, department: string | undefined): string {
+  const named = department?.trim();
+  return named ? `${named} ${query}` : query;
+}
+
+export function buildSearchRequest(query: string, count: number, filters: SearchFilters): PoshmarkSearchRequest {
+  const request: PoshmarkSearchRequest = {
+    query: searchQuery(query, filters.department),
+    count: String(count),
+    filters: { department: 'All', inventory_status: ['available'] },
+  };
+  const sort = filters.sort ? SERVER_SORTS[filters.sort] : undefined;
+  if (sort) request.sort_by = sort;
+  const condition = filters.condition ? CONDITION_CODES[filters.condition] : undefined;
+  if (condition) request.filters.condition = [condition];
+  if (filters.brand) request.filters.brand = [filters.brand];
+  if (filters.category) request.filters.category_v2 = filters.category;
+  if (filters.sizes?.length) request.filters.size = filters.sizes;
+  if (filters.colors?.length) request.filters.color = filters.colors;
+  return request;
+}
+
+export function searchUrl(request: PoshmarkSearchRequest): string {
+  return `${SEARCH_API}?request=${encodeURIComponent(JSON.stringify(request))}&summarize=true`;
+}
+
+/** Poshmark's canonical listing path: apostrophes dropped, every other run of punctuation a hyphen, the id last. */
+export function listingUrl(post: Pick<PoshmarkPost, 'id' | 'title'>): string {
+  const slug = (post.title ?? '')
+    .replace(/['’]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const prefix = slug ? `${slug}-` : '';
+  return `${LISTING_URL}${prefix}${post.id}`;
+}
+
+interface Price {
+  text: string;
+  numeric?: number;
+  currency: string;
+}
+
+export function priceOf(money: PoshmarkMoney | undefined): Price {
+  const numeric = money?.val !== undefined ? Number(money.val) : NaN;
+  const currency = money?.currency_symbol || '$';
+  if (!Number.isFinite(numeric)) return { text: 'Price not listed', currency };
+  const amount = Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2);
+  return { text: `${currency}${amount}`, numeric, currency };
+}
+
+export function toListing(post: PoshmarkPost): Listing {
+  const price = priceOf(post.price_amount);
+  const condition = post.condition ? CONDITION_NAMES[post.condition] : undefined;
+  return {
+    id: post.id,
+    title: post.title || post.id,
+    price: price.text,
+    priceNumeric: price.numeric,
+    currency: price.currency,
+    url: listingUrl(post),
+    images: post.picture_url ? [post.picture_url] : undefined,
+    seller: post.creator_username || undefined,
+    ...(condition && { condition }),
+    marketplace: 'poshmark',
+    scrapedAt: new Date().toISOString(),
+  };
+}
+
+export function toListingDetails(post: PoshmarkPost): ListingDetails {
+  const images = (Array.isArray(post.pictures) ? post.pictures : [])
+    .filter(isRecord)
+    .map((p) => p.url_large || p.url)
+    .filter((u): u is string => typeof u === 'string' && u !== '');
+  const cover = post.cover_shot?.url_large || post.picture_url;
+  if (images.length === 0 && cover) images.push(cover);
+  return {
+    id: post.id,
+    description: post.description || undefined,
+    images,
+    seller: post.creator_username || undefined,
+    isShippingOffered: true,
+    url: listingUrl(post),
+  };
+}
+
+/** Unpriced listings stay in, since the bound cannot rule them out. */
+export function withinPriceBounds(listings: Listing[], minPrice?: number, maxPrice?: number): Listing[] {
+  return listings.filter((l) => {
+    if (l.priceNumeric == null) return true;
+    if (minPrice != null && l.priceNumeric < minPrice) return false;
+    if (maxPrice != null && l.priceNumeric > maxPrice) return false;
+    return true;
+  });
+}
+
+/** Orders listings by price for a price sort, unpriced ones last; any other sort keeps Poshmark's order. */
+export function sortedByPrice(listings: Listing[], sort: SearchParams['sort']): Listing[] {
+  if (sort === 'price_low_to_high') return [...listings].sort((a, b) => (a.priceNumeric ?? Infinity) - (b.priceNumeric ?? Infinity));
+  if (sort === 'price_high_to_low') return [...listings].sort((a, b) => (b.priceNumeric ?? -Infinity) - (a.priceNumeric ?? -Infinity));
+  return listings;
+}
+
+/** A listing is addressed by its 24-character id, which also ends every listing slug. */
+export function postIdFrom(listingId: string): string {
+  return listingId.match(/([a-f0-9]{24})(?:[/?#].*)?$/i)?.[1] ?? listingId;
+}
+
+/** The posts in a search reply, or null when the reply is not one: an error envelope or a changed shape is a failed attempt, not an empty search. */
+export function postsFrom(body: unknown): PoshmarkPost[] | null {
+  if (!isRecord(body) || !Array.isArray(body.data)) return null;
+  return body.data.filter(isPost);
+}
+
+export type PostReply = { kind: 'post'; post: PoshmarkPost } | { kind: 'not_found' };
+
+/** What a single-post reply says, or null when it is neither a post nor a not-found. The endpoint answers with the post
+ *  itself, not under `data` like a search, and a gone listing is HTTP 200 with a NotFoundError envelope. */
+export function postReply(body: unknown): PostReply | null {
+  if (!isRecord(body)) return null;
+  const post = body.data ?? body;
+  if (isPost(post)) return { kind: 'post', post };
+  const { error } = body;
+  if (isRecord(error) && (error.errorType === 'NotFoundError' || error.statusCode === 404)) return { kind: 'not_found' };
+  return null;
+}
+
+/** Reads a single-post reply as listing details; a listing Poshmark no longer has is an error, not a retry. */
+export function detailsFromReply(postId: string, reply: PostReply): ListingDetails {
+  if (reply.kind === 'not_found') throw new Error(`Poshmark has no listing ${postId}; it may have been sold or removed`);
+  return toListingDetails(reply.post);
+}
+
+/** A second attempt covers a dropped connection or a one-off challenge page; `read` returning null marks a reply unusable. */
+async function getJson<T>(url: string, read: (body: unknown) => T | null): Promise<T> {
+  let lastError = 'no attempt made';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { headers: REQUEST_HEADERS, signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS) });
+      const text = await res.text();
+      if (res.status === 200) {
+        const value = read(JSON.parse(text));
+        if (value !== null) return value;
+        lastError = 'unexpected response shape';
+      } else {
+        lastError = `status=${res.status}`;
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+    console.log(`[poshmark] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastError})`);
+  }
+  throw new Error(`All ${MAX_ATTEMPTS} attempts failed. Last: ${lastError}`);
+}
 
 export class PoshmarkMarketplace extends BaseMarketplace {
   readonly name = 'poshmark';
   readonly displayName = 'Poshmark';
   readonly requiresAuth = false;
 
-  private async navigateWithRetry(url: string): Promise<Page> {
-    let lastError: string | undefined;
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (attempt > 0) await rotateBrowser();
-
-      let page: Page | undefined;
-      try {
-        page = await newPage();
-        const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
-        const status = resp?.status() ?? 0;
-        const title = await page.title();
-
-        if (status === 200 && !title.includes('Just a moment') && !title.includes('Forbidden')) {
-          return page;
-        }
-        lastError = `status=${status}, title="${title}"`;
-      } catch (err: any) {
-        lastError = err.message || String(err);
-      }
-
-      console.log(`[poshmark] Attempt ${attempt + 1}/${MAX_RETRIES}: blocked (${lastError}). Rotating IP...`);
-      if (page) await page.close().catch(() => {});
-    }
-
-    throw new Error(`All ${MAX_RETRIES} proxy attempts failed. Last: ${lastError}`);
-  }
-
   async search(params: SearchParams): Promise<SearchResult> {
-    const { query, maxPrice, minPrice, limit = 48, sort, condition, category, brand, department, sizes, colors } = params;
-
-    return withBrowserLock(async () => {
-      let page: Page | undefined;
-      try {
-        const searchUrl = this.buildSearchUrl(query, {
-          sort, condition, minPrice, maxPrice, category, brand, department, sizes, colors,
-        });
-
-        page = await this.navigateWithRetry(searchUrl);
-        await page.waitForSelector('a[href*="/listing/"]', { timeout: 8000 }).catch(() => {});
-
-        const raw: Array<{ id: string; slug: string; title: string; img: string; prices: string[] }> =
-          await page.evaluate(() => {
-            const seen = new Set<string>();
-            const out: any[] = [];
-            document.querySelectorAll('a[href*="/listing/"]').forEach((a) => {
-              const href = a.getAttribute('href') || '';
-              const m = href.match(/\/listing\/([^/?#]+)/);
-              if (!m) return;
-              const slug = m[1];
-              const idm = slug.match(/([a-f0-9]{24})$/i);
-              const id = idm ? idm[1] : slug;
-              if (seen.has(id)) return;
-              seen.add(id);
-
-              // Climb to the nearest ancestor whose text includes a price.
-              let box: HTMLElement | null = a as HTMLElement;
-              let hops = 0;
-              while (box && hops < 5 && !/[$]\s?\d/.test(box.innerText || '')) {
-                box = box.parentElement;
-                hops++;
-              }
-              const txt = ((box && box.innerText) || '').replace(/\s+/g, ' ').trim();
-              const img = a.querySelector('img') || (box && box.querySelector('img'));
-              out.push({
-                id,
-                slug,
-                title: (img && img.getAttribute('alt')) || '',
-                img: (img && img.getAttribute('src')) || '',
-                prices: (txt.match(/[$]\s?\d[\d.,]*/g) || []).slice(0, 3),
-              });
-            });
-            return out;
-          });
-
-        let listings: Listing[] = raw.map((r) => {
-          // Poshmark shows "<current> <original>"; the first match is the current price.
-          const priceStr = r.prices.length ? r.prices[0].replace(/\s/g, '') : 'Price not listed';
-          const parsed = this.parsePrice(priceStr);
-          return {
-            id: r.id,
-            title: r.title || this.humanizeSlug(r.slug),
-            price: priceStr,
-            priceNumeric: parsed?.numeric,
-            currency: parsed?.currency || '$',
-            url: `${LISTING_URL}${r.slug}`,
-            images: r.img ? [r.img] : undefined,
-            marketplace: this.name,
-            scrapedAt: new Date().toISOString(),
-          };
-        });
-
-        // Price bounds enforced client-side (URL price filter is unreliable).
-        if (minPrice != null) listings = listings.filter((l) => l.priceNumeric == null || l.priceNumeric >= minPrice);
-        if (maxPrice != null) listings = listings.filter((l) => l.priceNumeric == null || l.priceNumeric <= maxPrice);
-
-        listings = listings.slice(0, limit);
-
-        return {
-          marketplace: this.name,
-          success: true,
-          listings,
-          totalFound: listings.length,
-          ...(listings.length === 0 && {
-            note: 'No Poshmark listings parsed. The page may have been blocked or its markup changed.',
-          }),
-        };
-      } catch (error) {
-        return this.createError(`Poshmark search failed: ${error}`);
-      } finally {
-        if (page) await page.close().catch(() => {});
-      }
-    });
+    const { query, maxPrice, minPrice, sort, limit = PAGE_SIZE } = params;
+    try {
+      const count = requestCount(limit, params);
+      const posts = await getJson(searchUrl(buildSearchRequest(query, count, params)), postsFrom);
+      const bounded = withinPriceBounds(posts.map(toListing), minPrice, maxPrice);
+      const listings = sortedByPrice(bounded, sort).slice(0, limit);
+      return { marketplace: this.name, success: true, listings, totalFound: listings.length };
+    } catch (error) {
+      return this.createError(`Poshmark search failed: ${error}`);
+    }
   }
 
   async getListingDetails(listingId: string): Promise<ListingDetails> {
-    return withBrowserLock(async () => {
-      let page: Page | undefined;
-      try {
-        page = await this.navigateWithRetry(`${LISTING_URL}${listingId}`);
-
-        const data: { description?: string; images: string[]; seller?: string } = await page.evaluate(() => {
-          let description: string | undefined;
-          const images: string[] = [];
-          let seller: string | undefined;
-
-          // JSON-LD Product schema is the cleanest source when present.
-          document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
-            try {
-              const j = JSON.parse(s.textContent || '');
-              const node = Array.isArray(j) ? j.find((x) => x['@type'] === 'Product') : j;
-              if (node && node['@type'] === 'Product') {
-                if (node.description) description = node.description;
-                const imgs = node.image ? (Array.isArray(node.image) ? node.image : [node.image]) : [];
-                for (const im of imgs) if (im && !images.includes(im)) images.push(im);
-              }
-            } catch { /* ignore */ }
-          });
-
-          // og:image fallback / supplement.
-          document.querySelectorAll('meta[property="og:image"]').forEach((m) => {
-            const c = (m as HTMLMetaElement).content;
-            if (c && !images.includes(c)) images.push(c);
-          });
-          // Cloudfront post images in the DOM as a last resort.
-          if (images.length === 0) {
-            document.querySelectorAll('img[src*="cloudfront.net/posts"]').forEach((im) => {
-              const s = im.getAttribute('src');
-              if (s && !images.includes(s)) images.push(s);
-            });
-          }
-
-          if (!description) {
-            description = (document.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content || undefined;
-          }
-
-          // The closet link's text also carries "Last Active…" and sales
-          // counts; its href is just the username.
-          const sellerEl = document.querySelector('a[href^="/closet/"]');
-          const closet = sellerEl?.getAttribute('href')?.slice('/closet/'.length).split(/[?#/]/)[0];
-          if (sellerEl) seller = closet || sellerEl.textContent?.trim() || undefined;
-
-          return { description, images, seller };
-        });
-
-        return {
-          id: listingId,
-          description: data.description,
-          images: data.images,
-          seller: data.seller,
-          isShippingOffered: true,
-          url: `${LISTING_URL}${listingId}`,
-        };
-      } finally {
-        if (page) await page.close().catch(() => {});
-      }
-    });
+    const postId = postIdFrom(listingId);
+    const reply = await getJson(`${SEARCH_API}/${encodeURIComponent(postId)}`, postReply);
+    return detailsFromReply(postId, reply);
   }
 
   async healthCheck(): Promise<boolean> {
-    try {
-      const result = await this.search({ query: 'test', limit: 1 });
-      return result.success;
-    } catch {
-      return false;
-    }
-  }
-
-  // ── Private helpers ──────────────────────────────────────────────
-
-  private buildSearchUrl(query: string, filters: {
-    sort?: string; condition?: string; minPrice?: number;
-    maxPrice?: number; category?: string; brand?: string;
-    department?: string; sizes?: string[]; colors?: string[];
-  }): string {
-    const url = new URL(SEARCH_URL);
-    url.searchParams.set('query', query);
-    url.searchParams.set('type', 'listings');
-    url.searchParams.set('src', 'dir');
-
-    if (filters.sort) {
-      const poshSort = SORT_MAP[filters.sort];
-      if (poshSort) url.searchParams.set('sort_by', poshSort);
-    }
-    if (filters.condition && filters.condition !== 'any') {
-      const poshCondition = CONDITION_MAP[filters.condition];
-      if (poshCondition) url.searchParams.set('condition', poshCondition);
-    }
-    if (filters.department) url.searchParams.set('department', filters.department);
-    if (filters.brand) url.searchParams.append('brand[]', filters.brand);
-    if (filters.category) url.searchParams.set('category_v2', filters.category);
-    if (filters.sizes) for (const s of filters.sizes) url.searchParams.append('size[]', s);
-    if (filters.colors) for (const c of filters.colors) url.searchParams.append('color[]', c);
-
-    return url.toString();
-  }
-
-  private humanizeSlug(slug: string): string {
-    const parts = slug.split('-');
-    if (parts.length > 1 && /^[a-f0-9]{24}$/i.test(parts[parts.length - 1])) {
-      parts.pop();
-    }
-    return parts
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    const result = await this.search({ query: 'test', limit: 1 });
+    return result.success;
   }
 }

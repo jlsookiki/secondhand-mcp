@@ -20,7 +20,7 @@ export function toolDefinitions(): AnnotatedTool[] {
   return [
     {
       name: 'search_marketplace',
-      description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop and Poshmark need Chrome or Chromium on the machine; SidelineSwap (used sporting gear), Play It Again Sports (sporting goods store inventory) and Geartrade (used outdoor gear) are opt-in and run only when named in MARKETPLACES. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
+      description: `Search live listings on secondhand marketplaces by keyword. Marketplaces: ${listMarketplaceNames().join(', ')}. Returns up to \`limit\` listings with id, title, price, location, seller and a thumbnail; call get_listing_details with an id for the description, every photo and shipping. Requirements: Facebook Marketplace needs no credentials but is local, so pass \`location\` as "City, ST"; eBay needs EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in the server environment; Depop needs Chrome or Chromium on the machine; SidelineSwap (used sporting gear), Play It Again Sports (sporting goods store inventory) and Geartrade (used outdoor gear) are opt-in and run only when named in MARKETPLACES. Behavior: read-only, no login, no purchases. Facebook may rate-limit repeated searches from one IP, and results for a query are cached for 90 seconds. Errors: a marketplace that fails returns success:false with the reason instead of throwing; an unknown marketplace name lists the valid ones; an empty result usually means the query was too specific, so widen the keywords or drop a price bound before concluding nothing exists. Not for: buying, messaging sellers, saved searches, or new-retail catalogs.`,
       annotations: { title: 'Search Marketplace', ...READ_ONLY },
       inputSchema: {
         type: 'object',
@@ -79,7 +79,7 @@ export function toolDefinitions(): AnnotatedTool[] {
           },
           condition: {
             type: 'string',
-            description: 'Item condition filter. eBay: new or used only; a finer grade counts as used. Poshmark: new (NWT), like_new (NWOT), good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
+            description: 'Item condition filter. eBay: new or used only; a finer grade counts as used. Poshmark: new (with tags), like_new, good, fair. SidelineSwap and Play It Again Sports: new, used. Geartrade: new, excellent, good, fair, used. Use "any" for no filter.',
           },
           category: {
             type: 'string',
@@ -91,7 +91,7 @@ export function toolDefinitions(): AnnotatedTool[] {
           },
           department: {
             type: 'string',
-            description: 'Filter by department (Poshmark only). Options: Women, Men, Kids',
+            description: 'Department (Poshmark only), added to the search words. Options: Women, Men, Kids',
           },
           sizes: {
             type: 'array',
