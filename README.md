@@ -30,6 +30,7 @@ Works with Claude Desktop, Claude Code, Cursor, and other clients that run MCP s
 | Poshmark | No | Requires Chrome installed |
 | SidelineSwap | No | Used sporting gear; opt-in via `MARKETPLACES` |
 | Play It Again Sports | No | New and used sporting goods from store inventory; opt-in via `MARKETPLACES` |
+| Geartrade | No | Used outdoor and ski gear; opt-in via `MARKETPLACES` |
 
 ## Setup
 
@@ -97,9 +98,9 @@ By default Facebook, eBay, Depop and Poshmark are enabled. To choose which are a
 }
 ```
 
-Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`
+Valid values: `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, `geartrade`
 
-SidelineSwap and Play It Again Sports are only enabled when listed here.
+SidelineSwap, Play It Again Sports and Geartrade are only enabled when listed here.
 
 ### eBay API Keys
 
@@ -145,7 +146,7 @@ Search for items across marketplaces.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `query` | Yes | | Search terms |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, or `all` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, `geartrade`, or `all` |
 | `location` | No | `san francisco` | City to search in (Facebook only) |
 | `radiusMiles` | No | `25` | Search radius in miles, up to 500 (Facebook only) |
 | `maxPrice` | No | | Maximum price (Play It Again Sports: US stores only) |
@@ -153,12 +154,12 @@ Search for items across marketplaces.
 | `limit` | No | `20` | Max results |
 | `showSold` | No | `false` | Include sold items (Facebook, SidelineSwap) |
 | `includeImages` | No | `false` | Include image URLs in output |
-| `sort` | No | `relevance` | Sort order (Depop, Poshmark, SidelineSwap, Play It Again Sports): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
-| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used` |
-| `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
-| `brand` | No | | Brand filter (Poshmark only): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
+| `sort` | No | `relevance` | Sort order (Depop, Poshmark, SidelineSwap, Play It Again Sports; Geartrade: relevance and price only): `relevance`, `newest`, `most_popular`, `price_low_to_high`, `price_high_to_low` |
+| `condition` | No | | Item condition. eBay: `new`, `like_new`, `good`, `fair`. Depop: `new`, `like_new`, `excellent`, `good`, `fair`, `used`. Poshmark: `new` (NWT), `like_new` (NWOT), `good`, `fair`. SidelineSwap and Play It Again Sports: `new`, `used`. Geartrade: `new`, `excellent`, `good`, `fair`, `used` |
+| `category` | No | | Product category. SidelineSwap: numeric ID, e.g. `110030` (goalie masks). Geartrade: exact product type, e.g. `Alpine Skis w/ Bindings`. Depop: `tops`, `bottoms`, `dresses`, `coats-jackets`, `footwear`, `accessories`, `bags`, `jewellery`, `activewear`, `swimwear`. Poshmark: `Jackets_&_Coats`, `Dresses`, `Shoes`, `Accessories`, etc. |
+| `brand` | No | | Brand filter (Poshmark, Geartrade): e.g. `"Nike"`, `"Levi's"`, `"Gucci"` |
 | `department` | No | | Department filter (Poshmark only): `Women`, `Men`, `Kids` |
-| `sizes` | No | | Size filter (Depop, Poshmark): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
+| `sizes` | No | | Size filter (Depop, Poshmark, Geartrade): e.g. `["S", "M", "L"]` or `["US 9", "US 10"]` |
 | `colors` | No | | Color filter (Depop, Poshmark): `black`, `white`, `red`, `blue`, `green`, `yellow`, `orange`, `pink`, `purple`, `brown`, `grey`, `cream`, `multi`, `silver`, `gold` |
 
 **Data returned per marketplace:**
@@ -179,7 +180,7 @@ Get full details for a specific listing using an ID from search results.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `listingId` | Yes | | Listing ID from search results |
-| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, or `playitagain` |
+| `marketplace` | No | `facebook` | `facebook`, `ebay`, `depop`, `poshmark`, `sidelineswap`, `playitagain`, or `geartrade` |
 
 **Data returned per marketplace:**
 
@@ -219,6 +220,8 @@ Useful for research-style clients that expect these standard tool names; for fil
 
 **Play It Again Sports** — Reads the product data embedded in the storefront's search and product pages, so no browser is needed. Supports price, new/used condition, sort and offset. Prices are in the store's currency (USD or CAD) before shipping and tax; price bounds only match US stores.
 
+**Geartrade** — Reads Geartrade's Shopify storefront, so no browser is needed. Supports price, condition, brand, product type, size, price sort and offset. Prices are USD asking prices before shipping and tax.
+
 ## Development
 
 ```bash
@@ -242,6 +245,7 @@ npm run build
 - **Poshmark**: Requires Chrome/Chromium installed; no official API so relies on page scraping
 - **SidelineSwap**: Undocumented storefront endpoints, so it may break if SidelineSwap changes them
 - **Play It Again Sports**: Reads data embedded in the storefront's pages, so it may break if the site changes them; searches at most ten pages of 12 products
+- **Geartrade**: Reads storefront pages, so it may break if Geartrade changes its theme
 - **Rate limiting**: Don't make too many requests too quickly
 
 ## License

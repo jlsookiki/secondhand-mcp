@@ -1,0 +1,65 @@
+{
+  "id": 10250458431793,
+  "handle": "dynafit-tigard-polartec-hooded-jacket-mens-1045872",
+  "title": "Dynafit Dynafit Tigard Polartec Hooded Jacket - Men's",
+  "description": "<p>These jackets are in New condition.</p>",
+  "available": true,
+  "images": [
+    "//cdn.shopify.com/s/files/1/0839/9133/1121/files/aec9c84f-d698-4681-9f20-9d7c9d28a9e7_500156dd-9755-4102-901e-e607ca2d0ac0.webp?v=1794760785"
+  ],
+  "options": [
+    {
+      "name": "Size",
+      "position": 1,
+      "values": [
+        "M",
+        "S",
+        "XS"
+      ]
+    },
+    {
+      "name": "Color",
+      "position": 2,
+      "values": [
+        "Blueberry Burgundy",
+        "Olive Night"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "id": 51234399125809,
+      "title": "M / Blueberry Burgundy",
+      "requires_shipping": true,
+      "available": false,
+      "options": [
+        "M",
+        "Blueberry Burgundy"
+      ],
+      "price": 7807
+    },
+    {
+      "id": 51396454285617,
+      "title": "S / Blueberry Burgundy",
+      "requires_shipping": true,
+      "available": true,
+      "options": [
+        "S",
+        "Blueberry Burgundy"
+      ],
+      "price": 6657
+    },
+    {
+      "id": 51396455432497,
+      "title": "XS / Olive Night",
+      "requires_shipping": true,
+      "available": true,
+      "options": [
+        "XS",
+        "Olive Night"
+      ],
+      "price": 6657
+    }
+  ],
+  "type": "Men's Synthetic Insulation Jackets"
+}

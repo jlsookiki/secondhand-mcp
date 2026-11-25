@@ -9,6 +9,7 @@ import { DepopMarketplace } from './depop.js';
 import { PoshmarkMarketplace } from './poshmark.js';
 import { SidelineSwapMarketplace } from './sidelineswap/index.js';
 import { PlayItAgainMarketplace } from './playitagain/index.js';
+import { GeartradeMarketplace } from './geartrade/index.js';
 import { findChrome } from '../browser.js';
 
 export { Marketplace, BaseMarketplace } from './base.js';
@@ -18,6 +19,7 @@ export { DepopMarketplace } from './depop.js';
 export { PoshmarkMarketplace } from './poshmark.js';
 export { SidelineSwapMarketplace } from './sidelineswap/index.js';
 export { PlayItAgainMarketplace } from './playitagain/index.js';
+export { GeartradeMarketplace } from './geartrade/index.js';
 
 // Registry of all available marketplaces
 const marketplaces: Map<string, Marketplace> = new Map();
@@ -33,6 +35,7 @@ const defaultMarketplaces: Record<string, () => Marketplace> = {
 const optInMarketplaces: Record<string, () => Marketplace> = {
   sidelineswap: () => new SidelineSwapMarketplace(),
   playitagain: () => new PlayItAgainMarketplace(),
+  geartrade: () => new GeartradeMarketplace(),
 };
 
 const allMarketplaces = { ...defaultMarketplaces, ...optInMarketplaces };
