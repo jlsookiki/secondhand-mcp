@@ -100,14 +100,33 @@ const AVAILABILITY_TEXT: Record<ListingAvailability, string> = {
   unavailable: '🚫 No longer listed',
 };
 
-const ISO_DATE_LENGTH = 'YYYY-MM-DD'.length;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DAYS_PER_WEEK = 7;
+const DAYS_PER_MONTH = 30;
+
+/**
+ * How long ago a listing went up, by elapsed time rather than calendar date: a UTC date reads as
+ * tomorrow for a US shopper whose seller listed it in the evening.
+ */
+export function listingAge(listedAt: string, now: Date): string {
+  const days = Math.max(0, Math.floor((now.getTime() - Date.parse(listedAt)) / MS_PER_DAY));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < DAYS_PER_WEEK) return `${days} days ago`;
+  if (days < DAYS_PER_MONTH) return unitsAgo(Math.floor(days / DAYS_PER_WEEK), 'week');
+  return unitsAgo(Math.floor(days / DAYS_PER_MONTH), 'month');
+}
+
+function unitsAgo(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+}
 
 /** The listing's own facts (price, condition, age, whether it is still for sale), one line each. */
-export function factLines(details: ListingDetails): string[] {
+export function factLines(details: ListingDetails, now: Date): string[] {
   const lines: string[] = [];
   if (details.price) lines.push(`💰 ${priceText(details.price, details.originalPrice)}`);
   if (details.condition) lines.push(`✨ Condition: ${details.condition}`);
-  if (details.listedAt) lines.push(`📅 Listed ${details.listedAt.slice(0, ISO_DATE_LENGTH)}`);
+  if (details.listedAt) lines.push(`📅 Listed ${listingAge(details.listedAt, now)}`);
   if (details.availability) lines.push(AVAILABILITY_TEXT[details.availability]);
   return lines;
 }
@@ -125,7 +144,7 @@ export function detailShippingLines(details: ListingDetails): string[] {
   return [`📦 Shipping: ${details.shipping}`, ...services];
 }
 
-export function formatListingDetails(details: ListingDetails): string {
+export function formatListingDetails(details: ListingDetails, now = new Date()): string {
   const lines = [
     `📋 Listing Details`,
     ...(details.title ? [`**${details.title}**`] : []),
@@ -133,7 +152,7 @@ export function formatListingDetails(details: ListingDetails): string {
     '',
   ];
 
-  const facts = factLines(details);
+  const facts = factLines(details, now);
   if (facts.length > 0) {
     lines.push(...facts);
     lines.push('');
